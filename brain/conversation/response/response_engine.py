@@ -1,0 +1,293 @@
+import re
+
+from core.interfaces.response_engine import ResponseEngineProvider
+from core.interfaces.response_result import ResponseResult
+from brain.conversation.intent.detector import ConversationIntentDetector
+
+
+class LocalResponseEngine(ResponseEngineProvider):
+
+    def __init__(self):
+        self.intent_detector = ConversationIntentDetector()
+
+    def generate(
+        self,
+        text: str,
+        language: str,
+        context: list
+    ) -> ResponseResult:
+
+        # Normalize punctuation for conversation matching
+        text_lower = re.sub(
+            r"[^\u0900-\u097F\w\s]",
+            "",
+            text.lower()
+        ).strip()
+
+        # Detect conversational intent
+        intent = self.intent_detector.detect(text)
+
+        print(f"Conversation intent: {intent}")
+
+        words = text_lower.split()
+
+        if not words:
+            return ResponseResult(
+                response="I didn't hear anything."
+            )
+
+        # Greeting
+        if self.is_greeting(text_lower, words):
+            return ResponseResult(
+                response=self.generate_greeting(language)
+            )
+
+        # Status
+        if language == "hindi" and "कैसे हो" in text_lower:
+            return ResponseResult(
+                response="मैं ठीक हूँ Sir। बताइए, आज क्या करना है?"
+            )
+
+        if language == "hinglish" and "kaise ho" in text_lower:
+            return ResponseResult(
+                response="Main bilkul theek hoon Sir. Bataiye, kya karna hai?"
+            )
+
+        if "how are you" in text_lower:
+            return ResponseResult(
+                response="I'm doing well, Sir. What are we working on?"
+            )
+
+        # Identity
+        if "your name" in text_lower or "who are you" in text_lower:
+            return ResponseResult(
+                response="I'm Ela, your personal AI assistant."
+            )
+
+        # Gratitude
+        if any(
+            phrase in text_lower
+            for phrase in [
+                "thank you",
+                "thanks",
+                "thank u"
+            ]
+        ):
+            return ResponseResult(
+                response="You're welcome, Sir."
+            )
+
+        # Acknowledgement
+        if self.is_acknowledgement(text_lower):
+            return ResponseResult(
+                response=self.generate_acknowledgement(language)
+            )
+
+        # Time-based greetings
+        if "good morning" in text_lower:
+            return ResponseResult(
+                response="Good morning, Sir. Ready when you are."
+            )
+
+        if "good night" in text_lower:
+            return ResponseResult(
+                response="Good night, Sir."
+            )
+
+        # General conversation
+        if "what are you doing" in text_lower:
+            return ResponseResult(
+                response="I'm here and ready for your next task."
+            )
+
+        if "are you there" in text_lower:
+            return ResponseResult(
+                response="Yes, Sir. I'm listening."
+            )
+
+        # Context
+        if "what am i working on" in text_lower:
+            user_messages = [
+                message["content"]
+                for message in context
+                if message["role"] == "user"
+            ]
+
+            if len(user_messages) >= 2:
+                previous_text = user_messages[-2]
+
+                return ResponseResult(
+                    response=(
+                        f"You're working on: "
+                        f"'{previous_text}'."
+                    )
+                )
+
+            return ResponseResult(
+                response=(
+                    "You haven't told me what you're "
+                    "working on yet."
+                )
+            )
+
+        # Emotional / conversational statements
+        if intent == "emotional_state":
+
+            if any(
+                word in text_lower
+                for word in [
+                    "tired",
+                    "exhausted",
+                    "bored"
+                ]
+            ):
+                return ResponseResult(
+                    response=(
+                        "I understand, Sir. "
+                        "Maybe take a short break. "
+                        "What would you like to do?"
+                    )
+                )
+
+            if any(
+                word in text_lower
+                for word in [
+                    "happy",
+                    "good",
+                    "excited"
+                ]
+            ):
+                return ResponseResult(
+                    response=(
+                        "Good to hear, Sir. "
+                        "What are we doing next?"
+                    )
+                )
+
+            return ResponseResult(
+                response="I understand, Sir."
+            )
+
+        # General user statements
+        if intent == "personal_statement":
+
+            if (
+                text_lower.startswith("i am ")
+                or text_lower.startswith("im ")
+            ):
+                return ResponseResult(
+                    response=(
+                        "Got it, Sir. "
+                        "I'll keep that in mind for this conversation."
+                    )
+                )
+
+            if text_lower.startswith("mujhe "):
+                return ResponseResult(
+                    response=(
+                        "Samajh gaya, Sir. "
+                        "Aage kya karna hai?"
+                    )
+                )
+
+        # Unknown → LLM
+        return ResponseResult(
+            response=self.generate_dynamic_fallback(text),
+            needs_llm=True
+        )
+
+    def is_greeting(
+        self,
+        text_lower: str,
+        words: list
+    ) -> bool:
+
+        if any(
+            greeting in words
+            for greeting in [
+                "hello",
+                "hi",
+                "hey"
+            ]
+        ):
+            return True
+
+        if text_lower in [
+            "नमस्ते",
+            "नमस्कार"
+        ]:
+            return True
+
+        return False
+
+    def generate_greeting(self, language: str) -> str:
+
+        if language == "hindi":
+            return (
+                "नमस्ते Sir। "
+                "मैं आपकी मदद के लिए तैयार हूँ।"
+            )
+
+        if language == "hinglish":
+            return (
+                "Hello Sir. "
+                "Bataiye, main aapki kya help kar sakti hoon?"
+            )
+
+        return "Hello Sir. How can I help you?"
+
+    def is_acknowledgement(
+        self,
+        text_lower: str
+    ) -> bool:
+
+        phrases = [
+            "okay",
+            "ok",
+            "okay thanks",
+            "okay no problem",
+            "alright",
+            "all right",
+            "got it",
+            "understood",
+            "no problem",
+            "fine",
+            "sure",
+            "yes",
+            "yeah",
+            "yep"
+        ]
+
+        return text_lower in phrases
+
+    def generate_acknowledgement(
+        self,
+        language: str
+    ) -> str:
+
+        if language == "hindi":
+            return "ठीक है Sir।"
+
+        if language == "hinglish":
+            return "Theek hai Sir."
+
+        return "Alright, Sir."
+
+    def generate_dynamic_fallback(
+        self,
+        text: str
+    ) -> str:
+
+        word_count = len(text.split())
+
+        if word_count <= 3:
+            return (
+                f"I heard you say '{text}'. "
+                "What would you like me to do with that?"
+            )
+
+        return (
+            f"I understand what you said, Sir: "
+            f"'{text}'. "
+            "Tell me what you'd like to do next."
+        )
