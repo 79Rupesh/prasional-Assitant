@@ -1,105 +1,69 @@
 import re
+
 from core.interfaces.task_classifier import TaskClassifierProvider
+from brain.task.browser_task_parser import BrowserTaskParser
 
 
 class LocalTaskClassifier(TaskClassifierProvider):
+    def __init__(self):
+        self.browser_parser = BrowserTaskParser()
 
     def classify(self, text: str) -> str:
-
-     
-
-        text_lower = text.lower().strip()
+        text_lower = (text or "").lower().strip()
         text_lower = re.sub(
             r"^(okay|ok|alright|right|please|can you|could you)\s+",
             "",
-            text_lower
+            text_lower,
         )
-        text_clean = re.sub(r"[^\w\s]", "", text_lower)
+        text_clean = re.sub(r"[^\w\s./:-]", "", text_lower)
         words = text_clean.split()
 
         if not words:
             return "unknown"
 
-        # Browser tasks
-        browsers = [
-            "chrome",
-            "google chrome",
-            "firefox",
-            "safari",
-            "edge",
-            "microsoft edge",
-            "brave",
-            "brave browser",
-        ]
-
-        if any(browser in text_lower for browser in browsers):
+        # Explicit browser names should be treated as browser commands first.
+        browsers = (
+            "google chrome", "microsoft edge", "brave browser",
+            "chrome", "firefox", "safari", "edge", "brave",
+        )
+        if any(re.search(rf"\b{re.escape(browser)}\b", text_lower) for browser in browsers):
             return "browser_task"
 
-        
-        # YouTube tasks
+        # Keep dedicated YouTube search/playback operations intact.
         if (
             "youtube" in words
             or (
                 "video" in words
-                and any(word in words for word in [
-                    "play",
-                    "open",
-                    "watch"
-                ])
+                and any(word in words for word in ("play", "open", "watch"))
             )
         ):
             return "youtube_task"
 
-        # Browser navigation tasks
-        if any(phrase in text_lower for phrase in [
-            "previous tab",
-            "next tab",
-            "previous page",
-            "back to the previous page",
-            "go back",
-            "move forward",
-            "forward",
-            "reload",
-            "refresh",
-            "new tab",
-            "close tab",
-            "close the tab",
-            "close this tab",
-        ]):
+        # Generic websites (Facebook, GitHub, arbitrary domains, etc.) and web
+        # searches are browser tasks so they use the Chrome controller.
+        parsed_browser_task = self.browser_parser.parse(text)
+        if parsed_browser_task.get("operation") != "unknown":
             return "browser_task"
 
-
-        # Web tasks
-        if any(word in words for word in [
-            "search",
-            "google"
-        ]):
+        # Web-search fallback phrases that do not fit a browser parser command.
+        if (
+            any(word in words for word in ("search", "google"))
+            or text_lower.startswith(("look up ", "find online ", "search the web for "))
+        ):
             return "web_task"
 
-        # Keyboard tasks
-        if (
-            text_lower.startswith("type ")
-            or text_lower.startswith("press ")
-            or text_lower.startswith("hotkey ")
-        ):
+        # Keyboard / screen commands.
+        if text_lower.startswith(("type ", "press ", "hotkey ")):
             return "computer_task"
 
-        # Screen tasks
-        if any(phrase in text_lower for phrase in [
-            "take screenshot",
-            "capture screen",
-            "take a screenshot",
-            "screenshot"
-        ]):
+        if any(phrase in text_lower for phrase in (
+            "take screenshot", "capture screen", "take a screenshot", "screenshot",
+        )):
             return "computer_task"
 
-        
-         # UI mouse tasks
+        # UI mouse tasks.
         if (
-            text_lower.startswith("move mouse to ")
-            or text_lower.startswith("click at ")
-            or text_lower.startswith("double click at ")
-            or text_lower.startswith("scroll ")
+            text_lower.startswith(("move mouse to ", "click at ", "double click at ", "scroll "))
             or "click on " in text_lower
             or "click " in text_lower
             or "double click on " in text_lower
@@ -109,42 +73,21 @@ class LocalTaskClassifier(TaskClassifierProvider):
         ):
             return "computer_task"
 
-        # App / Computer open tasks
-        if text_lower.startswith("open "):
-            return "computer_task"
-
-        # File tasks
-        if any(word in words for word in [
-            "file",
-            "folder",
-            "directory",
-            "find",
-            "open",
-            "list",
-            "show",
-            "create",
-            "make",
-            "rename",
-            "move",
-            "delete",
-            "remove"
-        ]):
+        # Files and folders. Keep these ahead of the generic app-open fallback.
+        if any(word in words for word in (
+            "file", "folder", "directory", "find", "list", "show",
+            "create", "make", "rename", "move", "delete", "remove",
+        )):
             return "file_task"
 
-        # Computer tasks
-        if any(word in words for word in [
-            
-            "close",
-            "launch",
-            "click",
-            "double",
-            "type",
-            "press",
-            "hotkey",
-            "scroll",
-            "move"
-        ]):
+        # Opening normal desktop applications should remain a computer task.
+        if text_lower.startswith(("open ", "launch ", "start ")):
             return "computer_task"
-        
-        # Otherwise conversation
+
+        if any(word in words for word in (
+            "close", "launch", "click", "double", "type", "press",
+            "hotkey", "scroll", "move",
+        )):
+            return "computer_task"
+
         return "conversation"

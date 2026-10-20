@@ -1,22 +1,16 @@
-import subprocess
-import webbrowser
-import urllib.parse
-
 from core.interfaces.action import Action
+from actions.browser.windows_browser import WindowsBrowserController
 
 
 class WebSearchAction(Action):
+    """Open general web searches in Google Chrome, not the Windows default browser."""
+
+    def __init__(self):
+        self.browser_controller = WindowsBrowserController()
 
     def execute(self, value: str) -> str:
-        query = value.strip()
-
+        query = (value or "").strip()
         if not query:
             return "What should I search for?"
 
-        encoded_query = urllib.parse.quote_plus(query)
-
-        url = f"https://www.google.com/search?q={encoded_query}"
-
-        webbrowser.open_new_tab(url)
-
-        return f"Searching for {query}"
+        return self.browser_controller.search(query, browser="chrome")

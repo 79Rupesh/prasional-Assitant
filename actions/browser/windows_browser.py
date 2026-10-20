@@ -9,24 +9,98 @@ class WindowsBrowserController(BrowserControllerProvider):
         self.resolver = BrowserResolver()
         
     def open(self, url: str, browser: str = None) -> str:
-        url = url.strip()
+        """Open a URL in the requested browser; Chrome is the default on Windows."""
+        import os
+        import subprocess
+        import webbrowser
+
+        url = (url or "").strip()
         if not url:
             return "No URL specified."
-        if not url.startswith(("http://", "https://")):
+
+        if not url.startswith(("http://", "https://", "about:")):
             url = "https://" + url
-        try:
-            if browser:
-                # Browser-specific executable paths vary; default browser is safest unless registered.
-                webbrowser.get(browser).open_new_tab(url)
-            else:
-                webbrowser.open_new_tab(url)
-            return f"Opened {url}."
-        except webbrowser.Error:
-            webbrowser.open_new_tab(url)
-            return f"Opened {url} in the default browser."
+
+        browser_name = (browser or "chrome").strip().lower()
+        if browser_name in {"google chrome", "googlechrome"}:
+            browser_name = "chrome"
+        elif browser_name == "microsoft edge":
+            browser_name = "edge"
+        elif browser_name == "brave browser":
+            browser_name = "brave"
+
+        program_files = os.environ.get("PROGRAMFILES", r"C:\Program Files")
+        program_files_x86 = os.environ.get("PROGRAMFILES(X86)", r"C:\Program Files (x86)")
+        local_app_data = os.environ.get("LOCALAPPDATA", "")
+
+        executable_candidates = {
+            "chrome": [
+                os.path.join(program_files, "Google", "Chrome", "Application", "chrome.exe"),
+                os.path.join(program_files_x86, "Google", "Chrome", "Application", "chrome.exe"),
+                os.path.join(local_app_data, "Google", "Chrome", "Application", "chrome.exe"),
+            ],
+            "edge": [
+                os.path.join(program_files_x86, "Microsoft", "Edge", "Application", "msedge.exe"),
+                os.path.join(program_files, "Microsoft", "Edge", "Application", "msedge.exe"),
+                os.path.join(local_app_data, "Microsoft", "Edge", "Application", "msedge.exe"),
+            ],
+            "firefox": [
+                os.path.join(program_files, "Mozilla Firefox", "firefox.exe"),
+                os.path.join(program_files_x86, "Mozilla Firefox", "firefox.exe"),
+            ],
+            "brave": [
+                os.path.join(program_files, "BraveSoftware", "Brave-Browser", "Application", "brave.exe"),
+                os.path.join(program_files_x86, "BraveSoftware", "Brave-Browser", "Application", "brave.exe"),
+                os.path.join(local_app_data, "BraveSoftware", "Brave-Browser", "Application", "brave.exe"),
+            ],
+        }
+
+        candidates = executable_candidates.get(browser_name, [])
+        executable = next((path for path in candidates if path and os.path.isfile(path)), None)
+
+        if executable:
+            try:
+                subprocess.Popen(
+                    [executable, "--new-tab", url],
+                    stdin=subprocess.DEVNULL,
+                    stdout=subprocess.DEVNULL,
+                    stderr=subprocess.DEVNULL,
+                    close_fds=True,
+                )
+                display_name = {
+                    "chrome": "Google Chrome",
+                    "edge": "Microsoft Edge",
+                    "firefox": "Firefox",
+                    "brave": "Brave Browser",
+                }.get(browser_name, browser_name.title())
+                return f"Opened {url} in {display_name}."
+            except OSError as error:
+                return f"Unable to launch {browser_name}: {error}"
+
+        # Registered-browser fallback is allowed only for an explicitly requested
+        # non-Chrome browser. Never silently redirect a Chrome request to Edge.
+        if browser_name != "chrome":
+            try:
+                opened = webbrowser.get(browser_name).open_new_tab(url)
+                if opened:
+                    return f"Opened {url} in {browser_name.title()}."
+            except webbrowser.Error:
+                pass
+
+        if browser_name == "chrome":
+            return "Google Chrome was not found in the usual installation folders."
+        return f"Unable to find or launch the requested browser: {browser_name}."
 
     def search(self, query: str, browser: str = None) -> str:
-        return self.open("https://www.google.com/search?q=" + quote_plus(query), browser)
+        """Search Google in Chrome by default, regardless of Windows default browser."""
+        from urllib.parse import quote_plus
+
+        query = (query or "").strip()
+        if not query:
+            return "Please specify what you want to search for."
+
+        url = "https://www.google.com/search?q=" + quote_plus(query)
+        return self.open(url, browser or "chrome")
 
     def _hotkey(self, *keys):
         try:

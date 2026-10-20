@@ -28,6 +28,16 @@ class OpenAILLM(LLMProvider):
                 }
             ],
         )
+        
+        print("OpenRouter response:", repr(response))
+
+        if response is None:
+            raise RuntimeError("OpenRouter returned no response.")
+
+        if not response.choices:
+            raise RuntimeError(
+                f"OpenRouter returned no choices. Response: {response!r}"
+            )
 
         content = response.choices[0].message.content
 
