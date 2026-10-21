@@ -1,5 +1,6 @@
 import traceback
 
+from brain.knowledge.knowledge_loader import KnowledgeLoader
 from core.interfaces.conversation_context import ConversationContextProvider
 from brain.conversation.language.detector import LanguageDetector
 from brain.conversation.response.response_engine import LocalResponseEngine
@@ -18,6 +19,15 @@ class BrainCoordinator:
         
     ):
         self.context = context
+
+        self.knowledge_loader = KnowledgeLoader()
+
+        try:
+            self.knowledge_loader.load()
+            print("Ela knowledge loaded successfully.")
+        except (OSError, ValueError) as error:
+            self.knowledge_loader = None
+            print(f"Knowledge unavailable: {error}")
 
         self.classifier = LocalTaskClassifier()
         self.language_detector = LanguageDetector()
@@ -111,14 +121,23 @@ class BrainCoordinator:
             return fallback
 
         try:
+            knowledge = ""
+
+            if self.knowledge_loader is not None:
+                knowledge = (
+                    self.knowledge_loader.get_relevant_sections(
+                        text,
+                        max_chars=6000
+                    )
+                )
+
             response = self.llm_escalation.escalate(
                 text,
-                self.context.get_messages()
+                self.context.get_messages(),
+                knowledge=knowledge
             )
 
-            if not response or not response.strip():
-                response = "Sorry Sir, I couldn't generate a response. Please try again."
-
+            
         except Exception as error:
             print(
                 f"LLM escalation failed: "
