@@ -11,8 +11,8 @@ class WindowsYouTubeController:
 
     def open(self) -> str:
         result = self.browser_controller.open("https://www.youtube.com", browser="chrome")
-        if result.startswith("Opened "):
-            return "Opened YouTube in Google Chrome."
+        if result.startswith("Requested "):
+            return "Requested YouTube in Google Chrome; page load could not be verified."
         return result
 
     def search(self, query: str) -> str:
@@ -22,8 +22,11 @@ class WindowsYouTubeController:
 
         url = "https://www.youtube.com/results?search_query=" + quote(query)
         result = self.browser_controller.open(url, browser="chrome")
-        if result.startswith("Opened "):
-            return f"Searching YouTube for {query} in Google Chrome."
+        if result.startswith("Requested "):
+            return (
+                f"Requested a YouTube search for {query} in Google Chrome; "
+                "page load could not be verified."
+            )
         return result
 
     def play(self, query: str) -> str:
@@ -48,10 +51,13 @@ class WindowsYouTubeController:
             video = entries[0]
             url = "https://www.youtube.com/watch?v=" + video["id"]
             opened = self.browser_controller.open(url, browser="chrome")
-            if not opened.startswith("Opened "):
+            if not opened.startswith("Requested "):
                 return opened
 
-            return f"Opened {video.get('title', query)} on YouTube in Google Chrome."
+            return (
+                f"Requested {video.get('title', query)} on YouTube in Google Chrome; "
+                "page load could not be verified."
+            )
 
         except Exception as error:
             return f"I couldn't open that YouTube video: {error}"

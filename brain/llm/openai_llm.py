@@ -14,6 +14,8 @@ class OpenAILLM(LLMProvider):
         self.client = OpenAI(
             api_key=settings.openrouter_api_key,
             base_url="https://openrouter.ai/api/v1",
+            timeout=30.0,
+            max_retries=0,
         )
 
         self.model = "xingchen-agi/xing4.0-29b-a4b:free"
@@ -29,15 +31,11 @@ class OpenAILLM(LLMProvider):
             ],
         )
         
-        print("OpenRouter response:", repr(response))
-
         if response is None:
             raise RuntimeError("OpenRouter returned no response.")
 
         if not response.choices:
-            raise RuntimeError(
-                f"OpenRouter returned no choices. Response: {response!r}"
-            )
+            raise RuntimeError("OpenRouter returned no choices.")
 
         content = response.choices[0].message.content
 

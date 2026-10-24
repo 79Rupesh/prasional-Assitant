@@ -73,7 +73,10 @@ class WindowsBrowserController(BrowserControllerProvider):
                     "firefox": "Firefox",
                     "brave": "Brave Browser",
                 }.get(browser_name, browser_name.title())
-                return f"Opened {url} in {display_name}."
+                return (
+                    f"Requested {url} in {display_name}; "
+                    "page load could not be verified."
+                )
             except OSError as error:
                 return f"Unable to launch {browser_name}: {error}"
 
@@ -83,7 +86,10 @@ class WindowsBrowserController(BrowserControllerProvider):
             try:
                 opened = webbrowser.get(browser_name).open_new_tab(url)
                 if opened:
-                    return f"Opened {url} in {browser_name.title()}."
+                    return (
+                        f"Requested {url} in {browser_name.title()}; "
+                        "page load could not be verified."
+                    )
             except webbrowser.Error:
                 pass
 

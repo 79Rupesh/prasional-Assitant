@@ -33,6 +33,7 @@ from screen.screen_analyzer import ScreenAnalyzer
 from screen.windows_screen import WindowsScreen
 
 from brain.conversation.context import ConversationContext
+from core.task_state import TaskStateManager
 
 # from actions.computer.keyboard_action import KeyboardAction
 # from actions.computer.mouse_action import MouseAction
@@ -65,6 +66,7 @@ class TaskDispatcher(TaskDispatcherProvider):
         self.security_policy = SecurityPolicy()
 
         self.computer_controller = ComputerController()
+        self.task_state = TaskStateManager()
 
         self.youtube_screen = WindowsScreen()
         self.youtube_resolver = YouTubeVideoResolver(
@@ -75,6 +77,17 @@ class TaskDispatcher(TaskDispatcherProvider):
         # self.mouse_action = MouseAction()
 
     def dispatch(self, task_type: str, text: str) -> str:
+        """Run one task and retain truthful, session-only execution status."""
+        task = self.task_state.start(task_type, text)
+        try:
+            result = self._dispatch(task_type, text)
+        except Exception as error:
+            self.task_state.fail(task, error)
+            raise
+        self.task_state.finish(task, result)
+        return result
+
+    def _dispatch(self, task_type: str, text: str) -> str:
 
         # Handle pending confirmation
         if self.confirmation_manager.has_pending():
@@ -306,24 +319,6 @@ class TaskDispatcher(TaskDispatcherProvider):
                     return "I don't have a previous UI target."
 
                 # If previous target has a destination URL,
-                # check whether that destination is already open.
-                target_url = ui_target.get("url")
-
-                if target_url:
-                    browser_context = self.context.get_browser_context()
-                    browser = browser_context.get("browser")
-
-                    if browser:
-                        current_url = self.browser_controller.get_current_url(browser)
-
-                        if current_url:
-                            current_url = current_url.rstrip("/")
-                            target_url = target_url.rstrip("/")
-
-                            if current_url == target_url:
-                                return f"{ui_target['name']} is already open."
-
-                # Otherwise validate the previous target on screen.
                 if ui_target["x"] is None or ui_target["y"] is None:
                     return "I don't have a valid previous UI target."
 
@@ -335,19 +330,6 @@ class TaskDispatcher(TaskDispatcherProvider):
 
             if not target:
                 return "No screen target specified."
-
-            # Activate the browser stored in current context
-            browser_context = self.context.get_browser_context()
-            browser = browser_context.get("browser")
-
-            if browser:
-                self.browser_controller.activate(browser)
-                time.sleep(0.5)
-
-            # --------------------------------------------------
-            # Capture browser URLs BEFORE click
-            # --------------------------------------------------
-            before_urls = self.browser_controller.get_browser_urls()
 
             # Resolve target on current screen
             result = self.computer_controller.find_text_on_screen(target)
@@ -361,34 +343,11 @@ class TaskDispatcher(TaskDispatcherProvider):
                 result["y"]
             )
 
-            # Wait for navigation/UI update
-            time.sleep(2)
-
-            # --------------------------------------------------
-            # Capture browser URLs AFTER click
-            # --------------------------------------------------
-            after_urls = self.browser_controller.get_browser_urls()
-
-            # Detect which browser changed URL
-            browser, target_url = self.browser_controller.detect_url_change(
-                before_urls,
-                after_urls
-            )
-
-            # Save browser context if navigation was detected
-            if browser:
-                self.context.set_browser_context(
-                    browser,
-                    target_url
-                )
-
-            # Save target, coordinates and destination URL
             self.context.set_ui_target(
                 result["text"],
                 target,
                 result["x"],
-                result["y"],
-                target_url
+                result["y"]
             )
 
             return click_result
@@ -481,10 +440,8 @@ class TaskDispatcher(TaskDispatcherProvider):
                     browser
                 )
 
-                self.context.set_browser_context(
-                    browser,
-                    query
-                )
+                if result.startswith("Requested "):
+                    self.context.set_browser_context(browser, None)
 
                 return result
 
@@ -502,10 +459,8 @@ class TaskDispatcher(TaskDispatcherProvider):
                     browser
                 )
 
-                self.context.set_browser_context(
-                    browser,
-                    "about:blank"
-                )
+                if result.startswith("Requested "):
+                    self.context.set_browser_context(browser, None)
 
                 return result
 
@@ -527,10 +482,8 @@ class TaskDispatcher(TaskDispatcherProvider):
                 browser
             )
 
-            self.context.set_browser_context(
-                browser,
-                "https://www.google.com/search?q=" + quote_plus(query)
-            )
+            if result.startswith("Requested "):
+                self.context.set_browser_context(browser, None)
 
             return result
         

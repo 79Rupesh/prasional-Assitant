@@ -27,7 +27,7 @@ class GeminiLLM(LLMProvider):
             return response.text.strip()
 
         except Exception as error:
-            print(f"LLM Error: {error}")
+            print(f"LLM request failed: {type(error).__name__}")
 
             return (
                 "I'm unable to reach my language model right now."

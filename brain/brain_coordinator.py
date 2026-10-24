@@ -1,5 +1,3 @@
-import traceback
-
 from brain.knowledge.knowledge_loader import KnowledgeLoader
 from core.interfaces.conversation_context import ConversationContextProvider
 from brain.conversation.language.detector import LanguageDetector
@@ -7,7 +5,6 @@ from brain.conversation.response.response_engine import LocalResponseEngine
 from brain.llm.llm_escalation import LLMEscalation
 from brain.task.local_classifier import LocalTaskClassifier
 from actions.task_dispatcher import TaskDispatcher
-import traceback
 
 
 class BrainCoordinator:
@@ -141,9 +138,8 @@ class BrainCoordinator:
         except Exception as error:
             print(
                 f"LLM escalation failed: "
-                f"{type(error).__name__}: {error}"
+                f"{type(error).__name__}"
             )
-            traceback.print_exc()
 
             response = (
                 "Sorry Sir, my response service is unavailable right now. "

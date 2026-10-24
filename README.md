@@ -1,53 +1,54 @@
-# Ela Voice + Chrome Browser Patch
+# Ela
 
-This patch is designed for your existing Windows project. It does **not** replace the whole project or `.env`, and it does not change your OpenRouter setup.
+Ela is a Windows desktop voice assistant. The current application uses a
+microphone recorder, Whisper speech recognition, a text wake-word gate, local
+task classification, action handlers, local conversation responses, and an
+optional LLM provider. Conversation and task context are held in memory for
+the current process only.
 
-## What it changes
+## Run
 
-- Records until speech ends (about 1.4 seconds of silence), instead of cutting everything at exactly 5 seconds. Maximum utterance length is 25 seconds; after 12 seconds with no speech, that listening cycle is skipped.
-- Keeps audio at 48 kHz during capture, chooses the clearer stereo channel, resamples it to the 16 kHz mono format Whisper expects, and writes `mic_test.wav` for inspection.
-- Uses Whisper automatic detection first, keeps Hindi, and retries English when an unsupported language is guessed or when output looks like obvious repeated-text hallucination. English speech also gets a contextual refinement pass.
-- Routes website commands such as `open Facebook`, `open example.com`, and `visit ChatGPT` through the browser task parser.
-- Launches URLs and Google searches explicitly in Google Chrome rather than silently falling back to Microsoft Edge.
-- Sends YouTube open/search/play URLs to Chrome as well.
-- Makes a timestamped backup of every file it changes before applying the patch.
+From the project folder in Command Prompt:
 
-## Apply it on your computer
+```bat
+venv\Scripts\python.exe -m app.main
+```
 
-1. Stop Ela with `Ctrl+C`.
-2. Extract the contents of this ZIP **directly into** `C:\Users\hp\Desktop\Ela` (not into a nested new folder). You should see `apply_ela_patch.py` beside your existing `app`, `actions`, `audio`, and `brain` folders.
-3. In CMD, run:
+Configure `ELA_PIN` and the API key for the selected LLM provider in the local
+`.env` file. Do not commit or include `.env` in a shared ZIP.
 
-   ```bat
-   cd /d C:\Users\hp\Desktop\Ela
-   python apply_ela_patch.py
-   ```
+The optional `ELA_WAKE_TIMEOUT_SECONDS` setting controls how long follow-up
+speech is accepted after the wake word. It defaults to 45 seconds and must be
+between 5 and 300 seconds.
 
-4. If it reports success, run this syntax check:
+## Current voice and browser behavior
 
-   ```bat
-   python -m compileall audio actions brain
-   ```
+- Audio is recorded as 16 kHz, mono, 16-bit PCM and split on detected silence.
+- Whisper output is quality-gated; only English and Hindi language results are
+  accepted. Clear Hindi/Hinglish recognition is not guaranteed.
+- Standby activation currently depends on the recognized text beginning with
+  “Ela” or a supported spelling. This is **not** a dedicated audio wake-word
+  detector, so it cannot guarantee immunity to Whisper hallucinations.
+- Browser handlers request navigation in Chrome. They currently cannot verify
+  that a page finished loading, so Ela reports that limitation rather than
+  claiming verified completion.
+- `mic_test.wav` is overwritten with the latest captured utterance for
+  troubleshooting.
 
-5. Start Ela again:
+Run the safe, focused tests and syntax check with:
 
-   ```bat
-   python -m app.main
-   ```
+```bat
+venv\Scripts\python.exe -m unittest tests.test_voice_safety tests.test_task_state tests.test_browser_launch tests.test_explicit_task_routing tests.test_settings
+venv\Scripts\python.exe -m compileall -q app actions audio brain core tests
+```
 
-## Voice behavior
+The microphone, Whisper model, physical wake word, and real Chrome navigation
+must still be validated on the target Windows machine.
 
-The microphone starts a sentence when it detects speech and ends it after about 1.4 seconds of silence. A single utterance is capped at 25 seconds. If you pause longer than that in the middle of a sentence, Ela may treat the pause as the end of the utterance. Short, clear commands remain best for desktop automation.
+## Roadmap
 
-## Browser behavior
-
-- `Open Chrome` opens a new Chrome tab.
-- `Open Facebook`, `Open YouTube`, `Open ChatGPT`, `Open GitHub`, and other mapped website names open their homepages in Chrome.
-- A domain or URL such as `Open example.com` opens that domain in Chrome.
-- For an unknown site name without a URL, Ela opens Google search results for that name in Chrome rather than guessing a potentially invalid URL.
-- `Search for artificial intelligence in simple words` opens Google results in Chrome.
-- `Search for lo-fi music on YouTube` should stay on the dedicated YouTube flow.
-
-## Notes
-
-Whisper cannot guarantee perfect transcription for every accent or noisy utterance. This patch reduces fixed-length cutoffs and avoids forcing the model's first language guess; it does not make speech recognition infallible. The script preserves the project's existing `WindowsBrowserController` methods other than `open()` and `search()`.
+1. Complete and validate the V2 core: robust wake detection, reliable speech,
+   browser state verification, cancellation, confirmation, and task recovery.
+2. Add authorized desktop, window, keyboard/mouse, and document workflows.
+3. Consider web research, multitasking, messaging, and remote-control features
+   only after the core is stable.

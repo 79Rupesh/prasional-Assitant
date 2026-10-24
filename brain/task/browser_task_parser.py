@@ -71,6 +71,13 @@ class BrowserTaskParser:
             original,
             flags=re.IGNORECASE,
         ).strip()
+        hinglish_open = re.fullmatch(
+            r"(?:please\s+)?(.+?)\s+(?:kholo|khol\s+do|kholna)",
+            original,
+            flags=re.IGNORECASE,
+        )
+        if hinglish_open:
+            original = "open " + hinglish_open.group(1).strip()
         original = original.rstrip(".!? ")
         lowered = original.lower().strip()
 
