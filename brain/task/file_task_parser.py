@@ -130,6 +130,19 @@ class FileTaskParser:
                 "destination": destination
             }
 
+        # COPY
+        if text_lower.startswith("copy "):
+            command = text[5:].strip()
+            parts = command.split(" to ", 1)
+            if len(parts) != 2:
+                return {"operation": "unknown", "target": ""}
+
+            return {
+                "operation": "copy",
+                "target": self.clean_target(parts[0]),
+                "destination": self.clean_target(parts[1]),
+            }
+
         # DELETE
         delete_prefixes = [
             "delete ",
@@ -169,6 +182,11 @@ class FileTaskParser:
         for prefix in prefixes:
 
             if target_lower.startswith(prefix):
+                target = target[len(prefix):].strip()
+                break
+
+        for prefix in ("folder ", "file "):
+            if target.lower().startswith(prefix):
                 target = target[len(prefix):].strip()
                 break
 

@@ -23,7 +23,7 @@ class MacAppDiscovery(AppDiscoveryProvider):
                 check=True
             )
 
-        except subprocess.CalledProcessError:
+        except (OSError, subprocess.CalledProcessError):
             return ""
 
         target_lower = target.lower()

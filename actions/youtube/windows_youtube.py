@@ -9,11 +9,21 @@ class WindowsYouTubeController:
     def __init__(self):
         self.browser_controller = WindowsBrowserController()
 
-    def open(self) -> str:
-        result = self.browser_controller.open("https://www.youtube.com", browser="chrome")
+    def _open_url(self, url: str, description: str) -> str:
+        result = self.browser_controller.open(url, browser="chrome")
+        browser_name = "Google Chrome"
+        if result == "Google Chrome was not found in the usual installation folders.":
+            result = self.browser_controller.open(url, browser="default")
+            browser_name = "the default browser"
         if result.startswith("Requested "):
-            return "Requested YouTube in Google Chrome; page load could not be verified."
+            return (
+                f"Requested {description} in {browser_name}; "
+                "page load could not be verified."
+            )
         return result
+
+    def open(self) -> str:
+        return self._open_url("https://www.youtube.com", "YouTube")
 
     def search(self, query: str) -> str:
         query = (query or "").strip()
@@ -21,13 +31,7 @@ class WindowsYouTubeController:
             return "Please specify what you want to search for on YouTube."
 
         url = "https://www.youtube.com/results?search_query=" + quote(query)
-        result = self.browser_controller.open(url, browser="chrome")
-        if result.startswith("Requested "):
-            return (
-                f"Requested a YouTube search for {query} in Google Chrome; "
-                "page load could not be verified."
-            )
-        return result
+        return self._open_url(url, f"a YouTube search for {query}")
 
     def play(self, query: str) -> str:
         query = (query or "").strip()
@@ -50,13 +54,9 @@ class WindowsYouTubeController:
 
             video = entries[0]
             url = "https://www.youtube.com/watch?v=" + video["id"]
-            opened = self.browser_controller.open(url, browser="chrome")
-            if not opened.startswith("Requested "):
-                return opened
-
-            return (
-                f"Requested {video.get('title', query)} on YouTube in Google Chrome; "
-                "page load could not be verified."
+            return self._open_url(
+                url,
+                f"{video.get('title', query)} on YouTube",
             )
 
         except Exception as error:

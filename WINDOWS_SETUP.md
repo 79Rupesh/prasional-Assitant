@@ -7,13 +7,14 @@ This port keeps the existing project structure and task logic where possible, re
 - Python 3.10 or 3.11 recommended
 - A working microphone
 - Internet connection for first-time Whisper model download
-- Tesseract OCR is optional and required only for screen text recognition
+- Tesseract OCR is optional for general use, but required for screen text
+  recognition and WhatsApp contact/attachment verification
 
 ## 2. Open the project folder
 Open Command Prompt or PowerShell in the folder containing `main.py`'s parent package (`Ela`).
 
 ```powershell
-cd path	o\Ela
+cd path\to\Ela
 py -3.11 -m venv .venv
 .\.venv\Scripts\Activate.ps1
 python -m pip install --upgrade pip
@@ -23,7 +24,7 @@ pip install -r requirements-windows.txt
 If PowerShell blocks activation, use Command Prompt instead:
 
 ```bat
-.venv\Scriptsctivate.bat
+.\.venv\Scripts\activate.bat
 ```
 
 ## 3. Configure `.env`
@@ -46,10 +47,16 @@ From inside the `Ela` folder:
 python -m app.main
 ```
 
-The current app asks for the PIN through its authenticator. On first launch, Whisper may download the `base` model and can take time to load.
+The current app asks for the PIN through its authenticator. On first launch,
+Whisper downloads its default `small` model and can take time to load. Set
+`ELA_WHISPER_MODEL=base` in `.env` to use a faster, less accurate model.
 
 ## 5. Windows-specific notes
 - TTS uses Windows PowerShell's `System.Speech` API.
+- Ela uses the default Windows recording device. Run `python -m
+  audio.microphone.diagnostics` to list inputs. If needed, set
+  `ELA_MIC_DEVICE=<number>` in `.env`; for a quiet microphone set
+  `ELA_MIC_SENSITIVITY=1.5` (allowed range: 0.5–3).
 - Mouse and keyboard actions use PyAutoGUI. They act on the real desktop, so test carefully.
 - Browser navigation uses the default browser and keyboard shortcuts; it does not provide the same AppleScript-level browser introspection as macOS.
 - Screen OCR requires installing the Tesseract OCR application separately and then `pytesseract`/Pillow in Python.

@@ -1,4 +1,6 @@
 from core.interfaces.action import Action
+from core.platform_support import current_platform
+from input.mac_mouse import MacMouse
 from input.windows_mouse import WindowsMouse
 from input.mouse_controller import MouseController
 
@@ -6,7 +8,8 @@ from input.mouse_controller import MouseController
 class MouseAction(Action):
 
     def __init__(self):
-        self.mouse = MouseController(WindowsMouse())
+        provider = WindowsMouse() if current_platform() == "windows" else MacMouse()
+        self.mouse = MouseController(provider)
 
     def execute(self, value: str) -> str:
         return "Mouse action ready."

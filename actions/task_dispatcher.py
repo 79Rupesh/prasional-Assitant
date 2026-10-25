@@ -1,18 +1,14 @@
 import time
 import tempfile
 import os
+import threading
 
 from core.interfaces.task_dispatcher import TaskDispatcherProvider
 from core.security.permission_manager import PermissionManager
 
 from actions.search.web_search import WebSearchAction
-from actions.file_system.windows_file_system import WindowsFileSystem
-from actions.computer.windows_app_controller import WindowsAppController
-from actions.browser.windows_browser import WindowsBrowserController
-from actions.youtube.windows_youtube import WindowsYouTubeController
 
 from brain.task.file_task_parser import FileTaskParser
-from actions.file_system.windows_file_target_resolver import WindowsFileTargetResolver
 
 from brain.task.file_selection_context import FileSelectionContext
 from brain.task.file_selection_parser import FileSelectionParser
@@ -20,23 +16,34 @@ from brain.task.file_selection_parser import FileSelectionParser
 from brain.task.app_task_parser import AppTaskParser
 from brain.task.browser_task_parser import BrowserTaskParser
 from brain.task.youtube_task_parser import YouTubeTaskParser
+from brain.task.whatsapp_task_parser import WhatsAppTaskParser
 
 from core.security.confirmation_manager import ConfirmationManager
 from core.security.security_policy import SecurityPolicy
 
 from actions.computer.computer_controller import ComputerController
+from actions.computer.whatsapp_file_sender import WhatsAppFileSender
 
 from urllib.parse import quote_plus
 
 from brain.task.youtube_video_resolver import YouTubeVideoResolver
 from screen.screen_analyzer import ScreenAnalyzer
-from screen.windows_screen import WindowsScreen
+from core.platform_support import (
+    create_app_controller,
+    create_browser_controller,
+    create_file_system,
+    create_file_target_resolver,
+    create_screen,
+    create_youtube_controller,
+)
 
 from brain.conversation.context import ConversationContext
 from core.task_state import TaskStateManager
 
 # from actions.computer.keyboard_action import KeyboardAction
 # from actions.computer.mouse_action import MouseAction
+
+_TASK_EXECUTION_LOCK = threading.RLock()
 
 
 class TaskDispatcher(TaskDispatcherProvider):
@@ -46,14 +53,14 @@ class TaskDispatcher(TaskDispatcherProvider):
         
         self.permission_manager = PermissionManager()
 
-        self.web_search = WebSearchAction()
-        self.file_system = WindowsFileSystem()
-        self.app_controller = WindowsAppController()
-        self.browser_controller = WindowsBrowserController()
-        self.youtube_controller = WindowsYouTubeController()
+        self.browser_controller = create_browser_controller()
+        self.web_search = WebSearchAction(self.browser_controller)
+        self.file_system = create_file_system()
+        self.app_controller = create_app_controller()
+        self.youtube_controller = create_youtube_controller()
 
         self.file_parser = FileTaskParser()
-        self.file_resolver = WindowsFileTargetResolver()
+        self.file_resolver = create_file_target_resolver()
 
         self.file_selection_context = FileSelectionContext()
         self.file_selection_parser = FileSelectionParser()
@@ -61,14 +68,22 @@ class TaskDispatcher(TaskDispatcherProvider):
         self.app_parser = AppTaskParser()
         self.browser_parser = BrowserTaskParser()
         self.youtube_parser = YouTubeTaskParser()
+        self.whatsapp_parser = WhatsAppTaskParser()
 
         self.confirmation_manager = ConfirmationManager()
         self.security_policy = SecurityPolicy()
+        self.remaining_plan = []
+        self.completed_plan = []
 
         self.computer_controller = ComputerController()
+        self.window_manager = self.computer_controller.window_manager
+        self.whatsapp_sender = WhatsAppFileSender(
+            self.computer_controller,
+            self.app_controller,
+        )
         self.task_state = TaskStateManager()
 
-        self.youtube_screen = WindowsScreen()
+        self.youtube_screen = create_screen()
         self.youtube_resolver = YouTubeVideoResolver(
             ScreenAnalyzer()
 )
@@ -78,14 +93,29 @@ class TaskDispatcher(TaskDispatcherProvider):
 
     def dispatch(self, task_type: str, text: str) -> str:
         """Run one task and retain truthful, session-only execution status."""
-        task = self.task_state.start(task_type, text)
-        try:
-            result = self._dispatch(task_type, text)
-        except Exception as error:
-            self.task_state.fail(task, error)
-            raise
-        self.task_state.finish(task, result)
-        return result
+        with _TASK_EXECUTION_LOCK:
+            tracked_type = task_type
+            tracked_text = text
+            pending = self.confirmation_manager.get_pending()
+            if task_type == "confirmation" and pending:
+                approval = text.lower().strip().rstrip(".!?")
+                if approval in {
+                    "yes", "yeah", "yep", "confirm", "do it", "haan", "han",
+                    "\u0939\u093e\u0901", "\u0939\u093e\u0902", "\u0939\u093e\u0901 \u0915\u0930\u094b",
+                    "\u0920\u0940\u0915 \u0939\u0948",
+                }:
+                    tracked_type = pending.get("task_type", "file_task")
+                    tracked_text = pending.get("target", text)
+                    if pending.get("action") == "whatsapp_send":
+                        tracked_type = "whatsapp_task"
+            task = self.task_state.start(tracked_type, tracked_text)
+            try:
+                result = self._dispatch(task_type, text)
+            except Exception as error:
+                self.task_state.fail(task, error)
+                raise
+            self.task_state.finish(task, result)
+            return result
 
     def _dispatch(self, task_type: str, text: str) -> str:
 
@@ -94,7 +124,18 @@ class TaskDispatcher(TaskDispatcherProvider):
 
             text_lower = text.lower().strip().rstrip(".!?")
 
-            if text_lower in ["yes", "yeah", "yep", "confirm", "do it"]:
+            yes_responses = {
+                "yes", "yeah", "yep", "confirm", "do it", "haan", "han",
+                "sure", "okay", "ok", "\u0939\u093e\u0901", "\u0939\u093e\u0902",
+                "\u0939\u093e\u0901 \u0915\u0930\u094b", "\u0920\u0940\u0915 \u0939\u0948",
+            }
+            no_responses = {
+                "no", "nope", "cancel", "don't", "nahin", "nahi", "mat karo",
+                "\u0928\u0939\u0940\u0902", "\u0928\u0939\u0940\u0902 \u0915\u0930\u094b",
+                "\u0928\u0939\u0940\u0902 \u091a\u093e\u0939\u093f\u090f",
+            }
+
+            if text_lower in yes_responses:
 
                 pending = self.confirmation_manager.get_pending()
 
@@ -103,28 +144,37 @@ class TaskDispatcher(TaskDispatcherProvider):
 
                 self.confirmation_manager.confirm()
 
+                if action == "whatsapp_send":
+                    return self._continue_plan(self.whatsapp_sender.send_confirmed())
+
                 if action == "delete":
-                    return self.file_system.delete(target)
+                    return self._continue_plan(self.file_system.delete(target))
 
                 if action == "rename":
                     source, destination = target.split(" to ", 1)
 
-                    return self.file_system.rename(
-                        source,
-                        destination
+                    return self._continue_plan(
+                        self.file_system.rename(source, destination)
                     )
 
                 if action == "move":
                     source, destination = target.split(" to ", 1)
 
-                    return self.file_system.move(
-                        source,
-                        destination
+                    return self._continue_plan(
+                        self.file_system.move(source, destination)
                     )
 
                 return "Unknown confirmed action."
 
-            if text_lower in ["no", "nope", "cancel", "don't"]:
+            if text_lower in no_responses:
+
+                pending = self.confirmation_manager.get_pending()
+                if pending and pending.get("action") == "whatsapp_send":
+                    self.whatsapp_sender.cancel()
+
+                if self.remaining_plan:
+                    self.remaining_plan = []
+                    self.completed_plan = []
 
                 self.confirmation_manager.cancel()
 
@@ -187,14 +237,79 @@ class TaskDispatcher(TaskDispatcherProvider):
         if task_type == "youtube_task":
             return self.handle_youtube_task(text)
 
+        if task_type == "whatsapp_task":
+            return self.handle_whatsapp_task(text)
+
         if task_type == "file_task":
             return self.handle_file_task(text)
 
         return "Unknown task type."
 
+    def execute_plan(self, steps: list) -> str:
+        """Run a sequence immediately, pausing only for action-specific approval."""
+        with _TASK_EXECUTION_LOCK:
+            self.remaining_plan = []
+            self.completed_plan = []
+            request = "; then ".join(command for _task_type, command in steps)
+            task = self.task_state.start("task_sequence", request)
+            try:
+                result = self._run_plan(steps)
+            except Exception as error:
+                self.task_state.fail(task, error)
+                raise
+            self.task_state.finish(task, result)
+            return result
+
+    def _run_plan(self, steps: list) -> str:
+        for index, (task_type, command) in enumerate(steps):
+            result = self._dispatch(task_type, command)
+            if self.confirmation_manager.has_pending():
+                self.remaining_plan = steps[index + 1:]
+                completed = "; ".join(self.completed_plan)
+                prefix = f"Completed: {completed}. " if completed else ""
+                return prefix + result
+            if self._plan_step_failed(result):
+                self.remaining_plan = []
+                self.completed_plan = []
+                return result
+            self.completed_plan.append(result)
+
+        summary = "; ".join(self.completed_plan)
+        self.remaining_plan = []
+        self.completed_plan = []
+        return f"Done: {summary}" if summary else "There were no steps to run."
+
+    def _continue_plan(self, result: str) -> str:
+        if self._plan_step_failed(result):
+            self.remaining_plan = []
+            self.completed_plan = []
+            return result
+        self.completed_plan.append(result)
+        remaining = self.remaining_plan
+        self.remaining_plan = []
+        if not remaining:
+            summary = "; ".join(self.completed_plan)
+            self.completed_plan = []
+            return f"Done: {summary}" if summary else result
+        next_result = self._run_plan(remaining)
+        if self.confirmation_manager.has_pending():
+            return next_result
+        return next_result
+
+    @staticmethod
+    def _plan_step_failed(result: str) -> bool:
+        lowered = (result or "").strip().lower()
+        return lowered.startswith((
+            "i couldn't", "i could not", "unable to", "permission denied",
+            "path not found", "source not found", "destination not found",
+            "invalid ", "unknown ", "i don't know", "i couldn't verify",
+        ))
+
     def handle_computer_task(self, text: str) -> str:
 
         text_lower = text.lower().strip()
+        if self.app_parser.parse(text)["operation"] == "unknown":
+            self.window_manager.snap_active_left()
 
         # Keyboard: type
         if text_lower.startswith("type "):
@@ -394,7 +509,7 @@ class TaskDispatcher(TaskDispatcherProvider):
             "screenshot"
         ]):
             return self.computer_controller.capture_screen(
-                "/tmp/ela_screenshot.png"
+                os.path.join(tempfile.gettempdir(), "ela_screenshot.png")
             )
 
         # App tasks
@@ -443,7 +558,7 @@ class TaskDispatcher(TaskDispatcherProvider):
                 if result.startswith("Requested "):
                     self.context.set_browser_context(browser, None)
 
-                return result
+                return self._arrange_if_opened(result)
 
             if browser:
                 app_name = self.browser_controller.resolver.resolve(browser)
@@ -462,7 +577,7 @@ class TaskDispatcher(TaskDispatcherProvider):
                 if result.startswith("Requested "):
                     self.context.set_browser_context(browser, None)
 
-                return result
+                return self._arrange_if_opened(result)
 
             return "Please specify a browser."
 
@@ -485,7 +600,7 @@ class TaskDispatcher(TaskDispatcherProvider):
             if result.startswith("Requested "):
                 self.context.set_browser_context(browser, None)
 
-            return result
+            return self._arrange_if_opened(result)
         
 
         if operation == "close":
@@ -584,9 +699,27 @@ class TaskDispatcher(TaskDispatcherProvider):
                 query = text[len(prefix):].strip()
                 query = query.rstrip(".!?")
 
-                return self.web_search.execute(query)
+                return self._arrange_if_opened(self.web_search.execute(query))
 
-        return self.web_search.execute(text)
+        return self._arrange_if_opened(self.web_search.execute(text))
+
+    def _arrange_if_opened(self, result: str) -> str:
+        if (result or "").startswith(("Requested ", "Opened ")):
+            if self.window_manager.snap_active_left():
+                return result + " Focused on the left half of the screen."
+        return result
+
+    def _resolve_directory(self, target: str) -> list:
+        named_locations = {
+            "desktop": "Desktop",
+            "documents": "Documents",
+            "downloads": "Downloads",
+        }
+        name = (target or "").strip().lower().rstrip(" .")
+        if name in named_locations:
+            path = os.path.join(os.path.expanduser("~"), named_locations[name])
+            return [path] if os.path.isdir(path) else []
+        return self.file_resolver.resolve(target, target_type="directory")
 
     def handle_youtube_task(self, text: str) -> str:
 
@@ -601,14 +734,14 @@ class TaskDispatcher(TaskDispatcherProvider):
             return "I don't know how to perform that YouTube task yet."
 
         if operation == "open":
-            return self.youtube_controller.open()
+            return self._arrange_if_opened(self.youtube_controller.open())
 
         if operation == "search":
 
             if not query:
                 return "Please specify what you want to search for on YouTube."
 
-            return self.youtube_controller.search(query)
+            return self._arrange_if_opened(self.youtube_controller.search(query))
 
         if operation == "play":
 
@@ -618,7 +751,7 @@ class TaskDispatcher(TaskDispatcherProvider):
                 if not query:
                     return "Please specify what you want me to play."
 
-                return self.youtube_controller.play(query)
+                return self._arrange_if_opened(self.youtube_controller.play(query))
 
             # Screen-based video selection
             screenshot = os.path.join(
@@ -681,6 +814,17 @@ class TaskDispatcher(TaskDispatcherProvider):
         if not results:
             return f"I couldn't find anything named {target}."
 
+        if operation in {"delete", "rename", "move"} and len(results) > 1:
+            lines = [
+                f"{index}. {path}"
+                for index, path in enumerate(results[:10], start=1)
+            ]
+            return (
+                f"I found {len(results)} matches for {target}. "
+                "Please use the exact path so I don't change the wrong item.\n"
+                + "\n".join(lines)
+            )
+
         if operation == "find":
 
             if len(results) == 1:
@@ -705,7 +849,7 @@ class TaskDispatcher(TaskDispatcherProvider):
         if operation == "open":
 
             if len(results) == 1:
-                return self.file_system.open(results[0])
+                return self._arrange_if_opened(self.file_system.open(results[0]))
 
             displayed_results = results[:10]
 
@@ -861,4 +1005,66 @@ class TaskDispatcher(TaskDispatcherProvider):
                 selected_destination
             )
 
+        if operation == "copy":
+            destination = parsed.get("destination")
+            if not destination:
+                return "Please say which folder I should copy it to."
+
+            destination_results = self._resolve_directory(destination)
+            if not destination_results:
+                return f"I couldn't find the destination folder {destination}."
+            if len(results) > 1:
+                lines = [f"{index}. {path}" for index, path in enumerate(results[:10], 1)]
+                return (
+                    f"I found {len(results)} possible source matches for {target}.\n"
+                    + "\n".join(lines)
+                    + "\nPlease use the exact path so I copy the right item."
+                )
+            if len(destination_results) > 1:
+                lines = [
+                    f"{index}. {path}"
+                    for index, path in enumerate(destination_results[:10], 1)
+                ]
+                return (
+                    f"I found multiple destination folders for {destination}.\n"
+                    + "\n".join(lines)
+                    + "\nPlease use the exact destination path."
+                )
+            return self.file_system.copy(results[0], destination_results[0])
+
         return "Unknown file operation."
+
+    def handle_whatsapp_task(self, text: str) -> str:
+        parsed = self.whatsapp_parser.parse(text)
+        if parsed["operation"] != "send_file":
+            return "Say: send <file name> to <contact> on WhatsApp."
+
+        target = parsed["target"]
+        recipient = parsed["recipient"]
+        if target.lower() in {"it", "this", "that", "that file", "its file", "this file"}:
+            previous = self.context.get_ui_target()
+            if previous and previous.get("path"):
+                target = previous["path"]
+
+        matches = self.file_resolver.resolve(target, target_type="file")
+        if not matches:
+            return f"I couldn't find the file {target}. Say its exact file name or path."
+        if len(matches) > 1:
+            lines = [
+                f"{index}. {path}"
+                for index, path in enumerate(matches[:8], start=1)
+            ]
+            return (
+                f"I found multiple files matching {target}.\n"
+                + "\n".join(lines)
+                + "\nPlease say the exact path so I choose the right file."
+            )
+
+        path = matches[0]
+        stage_result = self.whatsapp_sender.stage(path, recipient)
+        if stage_result.startswith("I verified "):
+            return self.confirmation_manager.request_confirmation(
+                "whatsapp_send",
+                f"{os.path.basename(path)} to {recipient}",
+            )
+        return stage_result

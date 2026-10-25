@@ -48,6 +48,10 @@ class PermissionManager:
                 "browser_task",
                 True
             ),
+            "whatsapp_task": Permission(
+                "whatsapp_task",
+                True
+            ),
         }
 
     def is_allowed(self, action: str) -> bool:

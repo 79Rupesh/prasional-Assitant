@@ -141,6 +141,28 @@ class WindowsFileSystem(FileSystemProvider):
 
         return f"Moved {source} to {destination}"
 
+    def copy(self, source: str, destination: str) -> str:
+        source = os.path.expanduser(source)
+        destination = os.path.expanduser(destination)
+
+        if not os.path.exists(source):
+            return f"Source not found: {source}"
+        if not os.path.isdir(destination):
+            return f"Destination folder not found: {destination}"
+
+        target = os.path.join(destination, os.path.basename(os.path.normpath(source)))
+        if os.path.exists(target):
+            return f"A file or folder already exists at {target}"
+
+        try:
+            if os.path.isdir(source):
+                shutil.copytree(source, target)
+            else:
+                shutil.copy2(source, target)
+        except OSError as error:
+            return f"Unable to copy {source}: {error}"
+        return f"Copied {source} to {target}"
+
     def delete(self, path: str) -> str:
 
         path = os.path.expanduser(path)

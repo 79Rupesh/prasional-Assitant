@@ -5,7 +5,7 @@ from unittest.mock import MagicMock
 
 import numpy as np
 
-from app.voice_assistant import VoiceAssistant
+from app.voice_assistant import VoiceAssistant, WAKE_WORD_PATTERN
 from audio.stt.whisper_stt import WhisperSTT
 
 
@@ -34,8 +34,12 @@ class WhisperSafetyTests(unittest.TestCase):
         self.assertEqual(stt.transcribe(audio), "")
         self.assertFalse(stt.last_result.reliable)
 
-    def test_rejects_bad_unexpected_language_without_slow_retry(self):
-        model = FakeWhisper([whisper_result("word " * 8, "bn")])
+    def test_rejects_bad_unexpected_language_after_supported_language_retries(self):
+        model = FakeWhisper([
+            whisper_result("word " * 8, "bn"),
+            whisper_result("word " * 8, "bn"),
+            whisper_result("word " * 8, "bn"),
+        ])
         stt = WhisperSTT(model=model)
         audio = (np.ones(1600, dtype=np.int16) * 1000).tobytes()
         self.assertEqual(stt.transcribe(audio), "")
@@ -52,6 +56,29 @@ class WhisperSafetyTests(unittest.TestCase):
         stt = WhisperSTT(model=FakeWhisper([whisper_result("Ela, open YouTube")]))
         audio = (np.ones(1600, dtype=np.int16) * 1000).tobytes()
         self.assertEqual(stt.transcribe(audio), "Ela, open YouTube")
+        self.assertTrue(stt.last_result.reliable)
+
+    def test_accepts_a_short_lower_confidence_command(self):
+        stt = WhisperSTT(model=FakeWhisper([
+            whisper_result("Ela open Chrome", logprob=-1.2),
+        ]))
+        audio = (np.ones(1600, dtype=np.int16) * 1000).tobytes()
+        self.assertEqual(stt.transcribe(audio), "Ela open Chrome")
+        self.assertTrue(stt.last_result.reliable)
+
+    def test_accepts_a_quiet_recording_after_silence_is_included(self):
+        stt = WhisperSTT(model=FakeWhisper([
+            whisper_result("Ela open Chrome"),
+        ]))
+        samples = np.arange(16000, dtype=np.float32)
+        quiet_speech = (
+            np.sin(samples * 2 * np.pi * 220 / 16000) * 120
+        ).astype(np.int16)
+        audio = np.concatenate((
+            np.zeros(3200, dtype=np.int16),
+            quiet_speech,
+        )).tobytes()
+        self.assertEqual(stt.transcribe(audio), "Ela open Chrome")
         self.assertTrue(stt.last_result.reliable)
 
 
@@ -86,6 +113,15 @@ class VoiceWakeTests(unittest.TestCase):
         assistant = self.make_assistant("Ela, open YouTube", reliable=False)
         assistant.run_once()
         assistant.brain.process.assert_not_called()
+
+    def test_real_hindi_wake_word_is_recognized(self):
+        assistant = VoiceAssistant.__new__(VoiceAssistant)
+        import re
+        assistant.wake_pattern = re.compile(WAKE_WORD_PATTERN, re.IGNORECASE)
+        self.assertEqual(
+            assistant._extract_wake_command("\u090f\u0932\u093e, \u0915\u094d\u0930\u094b\u092e \u0916\u094b\u0932\u094b"),
+            "\u0915\u094d\u0930\u094b\u092e \u0916\u094b\u0932\u094b",
+        )
 
     def test_wake_word_cancel_returns_to_standby(self):
         assistant = self.make_assistant("Ela, बंद करो")

@@ -1,25 +1,9 @@
 from brain.task.local_classifier import LocalTaskClassifier
 
 
-classifier = LocalTaskClassifier()
+def test_desktop_text_edit_is_not_routed_to_web_search():
+    assert LocalTaskClassifier().classify("Open Text Edit") == "computer_task"
 
 
-tests = [
-    "Open Safari",
-    "Close Calculator",
-    "Search Python tutorials",
-    "Find my project folder",
-    "Open this file",
-    "Search YouTube for music",
-    "How are you?",
-    "Tell me something about AI",
-]
-
-
-for text in tests:
-    task_type = classifier.classify(text)
-
-    print(f"User: {text}")
-    print(f"Task: {task_type}")
-    print()
-    
+def test_explicit_website_is_routed_to_the_browser():
+    assert LocalTaskClassifier().classify("Open GitHub") == "browser_task"

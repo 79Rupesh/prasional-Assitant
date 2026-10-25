@@ -1,17 +1,12 @@
 from actions.computer.mac_app_discovery import MacAppDiscovery
 
 
-discovery = MacAppDiscovery()
+def main():
+    discovery = MacAppDiscovery()
 
-apps = [
-    "Safari",
-    "Calculator",
-    "Finder",
-    "Terminal"
-]
+    for app in ("Safari", "Calculator", "Finder", "Terminal"):
+        print(f"{app} -> {discovery.find(app)}")
 
-for app in apps:
 
-    result = discovery.find(app)
-
-    print(f"{app} -> {result}")
+if __name__ == "__main__":
+    main()

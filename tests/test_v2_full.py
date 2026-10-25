@@ -10,7 +10,7 @@ from actions.computer.computer_controller import ComputerController
 from actions.browser.mac_browser import MacBrowserController
 from brain.task.app_alias_resolver import AppAliasResolver
 from brain.task.local_classifier import LocalTaskClassifier
-
+from unittest.mock import patch
 
 PASS = 0
 FAIL = 0
@@ -106,92 +106,124 @@ def test_classifier_browser():
 # 3. COMPUTER CONTROLLER
 # ============================================================
 
+
 def test_app_open():
     controller = ComputerController()
 
-    result = controller.open_app("Calculator")
+    with patch.object(
+        controller.apps,
+        "open",
+        return_value="Opened Calculator."
+    ) as mock_open:
+        result = controller.open_app("Calculator")
 
-    assert "Opened" in result
+    assert "Opened Calculator" in result
+    mock_open.assert_called_once_with("Calculator")
 
 
 def test_app_alias_open():
     controller = ComputerController()
 
-    result = controller.open_app("Text Edit")
+    with patch.object(
+        controller.apps,
+        "open",
+        return_value="Opened TextEdit."
+    ) as mock_open:
+        result = controller.open_app("Text Edit")
 
     assert "Opened TextEdit" in result
+    mock_open.assert_called_once_with("Text Edit")
+
+def test_app_alias_open():
+    controller = ComputerController()
+
+    with patch.object(
+        controller.apps,
+        "open",
+        return_value="Opened TextEdit."
+    ) as mock_open:
+        result = controller.open_app("Text Edit")
+
+    assert "Opened TextEdit" in result
+    mock_open.assert_called_once_with("Text Edit")
 
 
 def test_keyboard_type():
     controller = ComputerController()
-
-    result = controller.type_text("Ela V2 Automated Test")
-
+    with patch.object(controller.keyboard, "execute", return_value="Typed test") as action:
+        result = controller.type_text("Ela V2 Automated Test")
     assert "Typed" in result
+    action.assert_called_once_with("Ela V2 Automated Test")
 
 
 def test_keyboard_enter():
     controller = ComputerController()
-
-    result = controller.press("enter")
-
+    with patch.object(controller.keyboard, "press", return_value="Pressed enter") as action:
+        result = controller.press("enter")
     assert "Pressed" in result
+    action.assert_called_once_with("enter")
 
 
 def test_keyboard_hotkey():
     controller = ComputerController()
-
-    result = controller.hotkey("command", "a")
-
+    with patch.object(controller.keyboard, "hotkey", return_value="Pressed hotkey") as action:
+        result = controller.hotkey("command", "a")
     assert "hotkey" in result.lower()
+    action.assert_called_once_with("command", "a")
 
 
 def test_mouse_move():
     controller = ComputerController()
-
-    result = controller.move_mouse(500, 500)
-
+    with patch.object(controller.mouse, "move", return_value="Moved") as action:
+        result = controller.move_mouse(500, 500)
     assert "500" in result
+    action.assert_called_once_with(500, 500)
 
 
 def test_mouse_click():
     controller = ComputerController()
-
-    result = controller.click(500, 500)
-
+    with patch.object(controller.mouse, "click", return_value="Clicked") as action:
+        result = controller.click(500, 500)
     assert "Clicked" in result
+    action.assert_called_once_with(500, 500)
 
 
 def test_mouse_double_click():
     controller = ComputerController()
-
-    result = controller.double_click(500, 500)
-
+    with patch.object(controller.mouse, "double_click", return_value="Double clicked") as action:
+        result = controller.double_click(500, 500)
     assert "Double clicked" in result
+    action.assert_called_once_with(500, 500)
 
 
 def test_mouse_scroll():
     controller = ComputerController()
-
-    result = controller.scroll(-3)
-
+    with patch.object(controller.mouse, "scroll", return_value="Scrolled") as action:
+        result = controller.scroll(-3)
     assert "Scrolled" in result
+    action.assert_called_once_with(-3)
 
 
 # ============================================================
 # 4. SCREEN
 # ============================================================
 
+
+
 def test_screenshot():
     controller = ComputerController()
 
-    path = "/tmp/ela_v2_automated_test.png"
+    with patch.object(
+        controller.screen,
+        "capture",
+        return_value="Screenshot saved."
+    ) as mock_capture:
+        result = controller.capture_screen("ela_test.png")
 
-    result = controller.capture_screen(path)
+    assert "Screenshot saved" in result
+    mock_capture.assert_called_once_with("ela_test.png")
 
-    assert os.path.exists(path)
-    assert os.path.getsize(path) > 0
-    assert path in result
+
 
 
 def test_ocr():

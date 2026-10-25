@@ -1,0 +1,11 @@
+numpy
+sounddevice
+openai-whisper
+python-dotenv
+pyautogui
+pyperclip
+yt-dlp
+Pillow
+pytesseract
+google-genai
+twilio

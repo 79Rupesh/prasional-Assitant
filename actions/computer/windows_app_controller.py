@@ -18,7 +18,9 @@ class WindowsAppController(AppControllerProvider):
         if not target:
             return f"Unable to find {resolved}."
         try:
-            if os.path.exists(target):
+            if target.lower().startswith("shell:"):
+                os.startfile(target)
+            elif os.path.exists(target):
                 os.startfile(target)
             else:
                 subprocess.Popen([target], shell=False)

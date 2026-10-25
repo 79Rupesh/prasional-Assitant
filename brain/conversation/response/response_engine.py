@@ -1,3 +1,4 @@
+from datetime import datetime
 import re
 
 from core.interfaces.response_engine import ResponseEngineProvider
@@ -59,10 +60,67 @@ class LocalResponseEngine(ResponseEngineProvider):
             )
 
         # Identity
-        if "your name" in text_lower or "who are you" in text_lower:
+        if (
+            "your name" in text_lower
+            or "who are you" in text_lower
+            or text_lower in {"आपका नाम क्या है", "तुम्हारा नाम क्या है"}
+        ):
+            if language == "hindi":
+                return ResponseResult(
+                    response="मैं एला हूँ, आपकी निजी सहायक।"
+                )
             return ResponseResult(
                 response="I'm Ela, your personal AI assistant."
             )
+
+        if text_lower in {
+            "what can you do",
+            "what are your capabilities",
+            "how can you help me",
+            "what do you do",
+            "help",
+            "तुम क्या कर सकती हो",
+            "आप क्या कर सकती हैं",
+        }:
+            if language == "hindi":
+                return ResponseResult(
+                    response=(
+                        "मैं बातचीत कर सकती हूँ, सीधे सवालों के जवाब दे "
+                        "सकती हूँ और समर्थित डेस्कटॉप कामों में मदद कर सकती हूँ।"
+                    )
+                )
+            return ResponseResult(
+                response=(
+                    "I can chat, answer straightforward questions, and help "
+                    "with supported desktop tasks such as opening apps, "
+                    "searching the web, and managing files."
+                )
+            )
+
+        if text_lower in {
+            "what time is it",
+            "tell me the time",
+            "current time",
+            "समय क्या हुआ है",
+            "अभी कितने बजे हैं",
+        }:
+            current_time = datetime.now().strftime("%I:%M %p")
+            if language == "hindi":
+                return ResponseResult(response=f"अभी {current_time} बजे हैं।")
+            return ResponseResult(response=f"It's {current_time}.")
+
+        if text_lower in {
+            "what is the date",
+            "what is todays date",
+            "what day is it",
+            "what is today",
+            "आज कौन सी तारीख है",
+            "आज कौन सा दिन है",
+        }:
+            current_date = datetime.now().strftime("%A, %B %d, %Y")
+            if language == "hindi":
+                return ResponseResult(response=f"आज {current_date} है।")
+            return ResponseResult(response=f"Today is {current_date}.")
 
         # Gratitude
         if any(

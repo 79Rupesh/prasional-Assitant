@@ -1,11 +1,12 @@
 import tempfile
+import os
+
 from actions.computer.keyboard_action import KeyboardAction
 from actions.computer.mouse_action import MouseAction
-from actions.computer.windows_app_controller import WindowsAppController
-
-from screen.windows_screen import WindowsScreen
 from screen.screen_controller import ScreenController
 from screen.screen_analyzer import ScreenAnalyzer
+from core.platform_support import create_app_controller, create_screen
+from actions.computer.window_manager import WindowManager
 
 
 class ComputerController:
@@ -13,10 +14,11 @@ class ComputerController:
     def __init__(self):
         self.keyboard = KeyboardAction()
         self.mouse = MouseAction()
-        self.apps = WindowsAppController()
+        self.apps = create_app_controller()
 
-        self.screen = ScreenController(WindowsScreen())
+        self.screen = ScreenController(create_screen())
         self.screen_analyzer = ScreenAnalyzer()
+        self.window_manager = WindowManager()
 
     # Keyboard
     def type_text(self, text: str) -> str:
@@ -43,7 +45,10 @@ class ComputerController:
 
     # Applications
     def open_app(self, app_name: str) -> str:
-        return self.apps.open(app_name)
+        result = self.apps.open(app_name)
+        if result.lower().startswith("opened ") and self.window_manager.snap_active_left():
+            return result + " Placed on the left half of the screen."
+        return result
 
     def activate_app(self, app_name: str) -> str:
         return self.apps.activate(app_name)

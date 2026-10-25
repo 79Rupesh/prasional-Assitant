@@ -1,12 +1,12 @@
 from core.interfaces.action import Action
-from actions.browser.windows_browser import WindowsBrowserController
+from core.platform_support import create_browser_controller
 
 
 class WebSearchAction(Action):
-    """Open general web searches in Google Chrome, not the Windows default browser."""
+    """Open general web searches in the platform's supported browser."""
 
-    def __init__(self):
-        self.browser_controller = WindowsBrowserController()
+    def __init__(self, browser_controller=None):
+        self.browser_controller = browser_controller or create_browser_controller()
 
     def execute(self, value: str) -> str:
         query = (value or "").strip()

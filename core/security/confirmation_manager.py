@@ -10,6 +10,12 @@ class ConfirmationManager:
             "target": target
         }
 
+        if action == "whatsapp_send":
+            return (
+                f"I staged the file for {target}. "
+                "Should I send it now? Say yes or no."
+            )
+
         return (
             f"Are you sure you want to {action} "
             f"{target}? Please say yes or no."

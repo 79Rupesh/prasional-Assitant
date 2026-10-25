@@ -3,12 +3,14 @@ import re
 from core.interfaces.task_classifier import TaskClassifierProvider
 from brain.task.browser_task_parser import BrowserTaskParser
 from brain.task.youtube_task_parser import YouTubeTaskParser
+from brain.task.whatsapp_task_parser import WhatsAppTaskParser
 
 
 class LocalTaskClassifier(TaskClassifierProvider):
     def __init__(self):
         self.browser_parser = BrowserTaskParser()
         self.youtube_parser = YouTubeTaskParser()
+        self.whatsapp_parser = WhatsAppTaskParser()
 
     def classify(self, text: str) -> str:
         text_lower = (text or "").lower().strip()
@@ -27,6 +29,9 @@ class LocalTaskClassifier(TaskClassifierProvider):
         # a browser or website in ordinary conversation is not an action.
         if self.youtube_parser.parse(text).get("operation") != "unknown":
             return "youtube_task"
+
+        if self.whatsapp_parser.parse(text).get("operation") != "unknown":
+            return "whatsapp_task"
 
         parsed_browser_task = self.browser_parser.parse(text)
         if parsed_browser_task.get("operation") != "unknown":
@@ -63,7 +68,7 @@ class LocalTaskClassifier(TaskClassifierProvider):
         # Files and folders. Keep these ahead of the generic app-open fallback.
         if any(word in words for word in (
             "file", "folder", "directory", "find", "list", "show",
-            "create", "make", "rename", "move", "delete", "remove",
+            "create", "make", "rename", "move", "copy", "delete", "remove",
         )):
             return "file_task"
 

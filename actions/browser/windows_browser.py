@@ -29,6 +29,17 @@ class WindowsBrowserController(BrowserControllerProvider):
         elif browser_name == "brave browser":
             browser_name = "brave"
 
+        if browser_name in {"default", "system default"}:
+            try:
+                if webbrowser.open_new_tab(url):
+                    return (
+                        f"Requested {url} in the default browser; "
+                        "page load could not be verified."
+                    )
+            except (webbrowser.Error, OSError):
+                pass
+            return "Unable to open the URL in the default browser."
+
         program_files = os.environ.get("PROGRAMFILES", r"C:\Program Files")
         program_files_x86 = os.environ.get("PROGRAMFILES(X86)", r"C:\Program Files (x86)")
         local_app_data = os.environ.get("LOCALAPPDATA", "")

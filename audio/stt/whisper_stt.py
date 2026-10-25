@@ -2,6 +2,7 @@
 """Whisper STT for English, Hindi and Hinglish."""
 
 from dataclasses import dataclass
+import os
 import re
 
 import numpy as np
@@ -17,14 +18,30 @@ class TranscriptionResult:
     language: str = ""
     reliable: bool = False
     reason: str = "no transcription"
+    average_logprob: float = -10.0
 
 
 class WhisperSTT(STTProvider):
-    MIN_RMS = 0.002
-    MIN_AVG_LOGPROB = -1.0
-    MAX_NO_SPEECH_PROB = 0.65
+    FRAME_SAMPLES = 320
+    MIN_SPEECH_FRAME_RMS = 0.0015
+    MIN_ACTIVE_FRAMES = 5
+    # Short Hinglish commands often have lower confidence than long English
+    # sentences. These values still reject clear no-speech/hallucination
+    # output without throwing away normal commands such as "Ela, open Chrome".
+    MIN_AVG_LOGPROB = -1.35
+    MAX_NO_SPEECH_PROB = 0.80
 
-    def __init__(self, model_name: str = "small", model=None):
+    def __init__(self, model_name: str = None, model=None):
+        model_name = (model_name or os.getenv("ELA_WHISPER_MODEL", "small")).strip()
+        if not model_name:
+            model_name = "small"
+        self.language_preference = os.getenv(
+            "ELA_WHISPER_LANGUAGE", "auto"
+        ).strip().lower()
+        if self.language_preference not in {"auto", "en", "hi"}:
+            raise ValueError(
+                "ELA_WHISPER_LANGUAGE must be 'auto', 'en', or 'hi'."
+            )
         print("Loading Whisper model...")
         self.model = model if model is not None else whisper.load_model(model_name)
         self.last_result = TranscriptionResult()
@@ -92,11 +109,15 @@ class WhisperSTT(STTProvider):
             "task": "transcribe",
             "fp16": False,
             "temperature": 0.0,
-            "beam_size": 5,
+            "beam_size": 3,
             "condition_on_previous_text": False,
             "no_speech_threshold": self.MAX_NO_SPEECH_PROB,
             "logprob_threshold": self.MIN_AVG_LOGPROB,
             "compression_ratio_threshold": 2.4,
+            "initial_prompt": (
+                "The assistant is called Ela. Commands may be in English, "
+                "Hindi, or Hinglish."
+            ),
             "verbose": False,
         }
 
@@ -108,15 +129,60 @@ class WhisperSTT(STTProvider):
     def _candidate(self, result):
         text = self._clean_text(result.get("text", ""))
         language = (result.get("language") or "").lower()
-        reason = self._unreliable_reason(text, result.get("segments") or [])
+        segments = result.get("segments") or []
+        reason = self._unreliable_reason(text, segments)
         if reason is None and language not in {"en", "hi"}:
             reason = f"unsupported language ({language or 'unknown'})"
+        average_logprob = (
+            sum(float(segment.get("avg_logprob", -10)) for segment in segments)
+            / len(segments)
+            if segments
+            else -10.0
+        )
         return TranscriptionResult(
             text=text,
             language=language,
             reliable=reason is None,
             reason=reason or "ok",
+            average_logprob=average_logprob,
         )
+
+    @classmethod
+    def _filter_speech(cls, audio: np.ndarray):
+        """Trim silence and reject noise/transient-only buffers before Whisper."""
+        frame_count = int(np.ceil(audio.size / cls.FRAME_SAMPLES))
+        frame_levels = np.empty(frame_count, dtype=np.float32)
+        for index in range(frame_count):
+            start = index * cls.FRAME_SAMPLES
+            frame = audio[start:start + cls.FRAME_SAMPLES]
+            frame_levels[index] = np.sqrt(np.mean(frame ** 2))
+
+        reference_level = (
+            float(np.percentile(frame_levels, 75)) if frame_levels.size else 0.0
+        )
+        threshold = max(cls.MIN_SPEECH_FRAME_RMS, reference_level * 0.25)
+        active_frames = np.flatnonzero(frame_levels >= threshold)
+        if active_frames.size < cls.MIN_ACTIVE_FRAMES:
+            return None
+
+        padding = int(0.1 * 16000)
+        start = max(0, int(active_frames[0]) * cls.FRAME_SAMPLES - padding)
+        end = min(
+            audio.size,
+            (int(active_frames[-1]) + 1) * cls.FRAME_SAMPLES + padding,
+        )
+        filtered = audio[start:end].copy()
+
+        for index, level in enumerate(frame_levels):
+            if level < threshold:
+                frame_start = index * cls.FRAME_SAMPLES - start
+                frame_end = frame_start + cls.FRAME_SAMPLES
+                if frame_end > 0 and frame_start < filtered.size:
+                    filtered[
+                        max(0, frame_start):min(filtered.size, frame_end)
+                    ] = 0.0
+
+        return filtered
 
     def transcribe(self, audio_data: bytes) -> str:
         self.last_result = TranscriptionResult()
@@ -132,50 +198,73 @@ class WhisperSTT(STTProvider):
 
         audio = audio.astype(np.float32) / 32768.0
 
-        rms = float(np.sqrt(np.mean(audio ** 2)))
-        peak = float(np.max(np.abs(audio)))
-        print(f"Audio level: RMS={rms:.5f}, peak={peak:.5f}")
-
-        if rms < self.MIN_RMS:
-            self.last_result = TranscriptionResult(reason="audio too quiet")
-            print("Audio is too quiet. Skipping.")
+        audio = self._filter_speech(audio)
+        if audio is None:
+            self.last_result = TranscriptionResult(reason="no speech-level audio")
+            print("No sustained speech detected; skipping Whisper.")
             return ""
 
+        rms = float(np.sqrt(np.mean(audio ** 2)))
+        peak = float(np.max(np.abs(audio)))
+        print(f"Speech audio level: RMS={rms:.5f}, peak={peak:.5f}")
+
         try:
-            primary = self._candidate(self._run_transcription(audio))
+            initial_language = (
+                None if self.language_preference == "auto"
+                else self.language_preference
+            )
+            primary = self._candidate(
+                self._run_transcription(audio, language=initial_language)
+            )
         except Exception as error:
             self.last_result = TranscriptionResult(
-                reason=f"Whisper error: {type(error).__name__}"
+                reason=f"Whisper error: {type(error).__name__}: {error}"
             )
             print(self.last_result.reason)
             return ""
 
-        best = primary
         print("Detected language:", primary.language or "unknown")
         print("First transcription:", repr(primary.text))
 
-        # A forced Hindi decode is expensive.  It is useful for an unknown or
-        # Hindi decode that failed quality checks, but retrying every mistaken
-        # Bengali/other-language guess makes the assistant unresponsive.
-        # Unexpected-language, low-quality text is rejected safely instead.
-        if not primary.reliable and primary.language in {"", "hi"}:
-            try:
-                hindi_result = self._run_transcription(
-                    audio,
-                    language="hi",
-                )
+        candidates = [primary]
+        if not primary.reliable and self.language_preference == "auto":
+            if primary.language in {"en", "hi"}:
+                retry_languages = [primary.language]
+                retry_languages.append("hi" if primary.language == "en" else "en")
+            else:
+                retry_languages = ["en", "hi"]
 
-                hindi_candidate = self._candidate(hindi_result)
-                print("Hindi retry:", repr(hindi_candidate.text))
+            # An auto-detection error must not force Hindi as the only retry:
+            # try both supported spoken languages and keep the strongest valid
+            # result. The maximum is three passes including the initial one.
+            for retry_language in retry_languages:
+                try:
+                    retry_result = self._run_transcription(
+                        audio,
+                        language=retry_language,
+                    )
+                    retry_candidate = self._candidate(retry_result)
+                    candidates.append(retry_candidate)
+                    print(
+                        f"{retry_language.upper()} retry:",
+                        repr(retry_candidate.text),
+                        f"reliable={retry_candidate.reliable}",
+                        f"reason={retry_candidate.reason}",
+                    )
+                except Exception as error:
+                    print(
+                        f"{retry_language.upper()} retry failed: "
+                        f"{type(error).__name__}: {error}"
+                    )
 
-                if hindi_candidate.reliable and not primary.reliable:
-                    best = hindi_candidate
-
-            except Exception as error:
-                print(
-                    f"Hindi retry failed: "
-                    f"{type(error).__name__}: {error}"
-                )
+        reliable_candidates = [
+            candidate for candidate in candidates if candidate.reliable
+        ]
+        best = max(
+            reliable_candidates,
+            key=lambda candidate: candidate.average_logprob,
+            default=primary,
+        )
 
         self.last_result = best
         print(f"Whisper quality: reliable={best.reliable}, reason={best.reason}")
@@ -183,5 +272,5 @@ class WhisperSTT(STTProvider):
             print("No reliable transcription; skipping.")
             return ""
 
-        print("Whisper recognized:", ascii(best.text))
+        print("Whisper recognized:", best.text)
         return best.text

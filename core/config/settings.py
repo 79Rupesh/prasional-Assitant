@@ -23,7 +23,13 @@ class Settings:
             )
 
         self.llm_api_key = os.getenv("LLM_API_KEY")
+        self.openai_api_key = os.getenv("OPENAI_API_KEY") or self.llm_api_key
+        self.openai_model = os.getenv("OPENAI_MODEL", "gpt-4o-mini")
+        self.openrouter_model = os.getenv(
+            "OPENROUTER_MODEL", "xingchen-agi/xing4.0-29b-a4b:free"
+        )
         self.gemini_api_key = os.getenv("GEMINI_API_KEY")
+        self.gemini_model = os.getenv("GEMINI_MODEL", "gemini-3.6-flash")
 
         self.stt_api_key = os.getenv("STT_API_KEY")
         self.tts_api_key = os.getenv("TTS_API_KEY")

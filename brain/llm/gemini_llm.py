@@ -15,20 +15,12 @@ class GeminiLLM(LLMProvider):
         )
 
     def generate(self, prompt: str) -> str:
-        try:
-            response = self.client.models.generate_content(
-                model="gemini-3.6-flash",
-                contents=prompt
-            )
+        response = self.client.models.generate_content(
+            model=settings.gemini_model,
+            contents=prompt
+        )
 
-            if not response.text:
-                return "I couldn't generate a response."
+        if not response.text:
+            return "I couldn't generate a response."
 
-            return response.text.strip()
-
-        except Exception as error:
-            print(f"LLM request failed: {type(error).__name__}")
-
-            return (
-                "I'm unable to reach my language model right now."
-            )
+        return response.text.strip()

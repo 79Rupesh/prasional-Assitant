@@ -28,7 +28,8 @@ class YouTubeTaskParser:
 
         # Open YouTube.
         if re.fullmatch(
-            r"(?:open|launch|start|go to)\s+(?:a\s+)?youtube",
+            r"(?:open|launch|start|go to)\s+(?:a\s+)?youtube"
+            r"(?:\s*,?\s+(?:ai|assistant|please|for me))?",
             text_lower,
         ):
             operation = "open"

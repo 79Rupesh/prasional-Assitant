@@ -1,4 +1,8 @@
+import os
+
 from core.interfaces.action import Action
+from core.platform_support import current_platform
+from input.mac_keyboard import MacKeyboard
 from input.windows_keyboard import WindowsKeyboard
 from input.keyboard_controller import KeyboardController
 
@@ -6,7 +10,8 @@ from input.keyboard_controller import KeyboardController
 class KeyboardAction(Action):
 
     def __init__(self):
-        self.keyboard = KeyboardController(WindowsKeyboard())
+        provider = WindowsKeyboard() if current_platform() == "windows" else MacKeyboard()
+        self.keyboard = KeyboardController(provider)
 
     def execute(self, value: str) -> str:
 

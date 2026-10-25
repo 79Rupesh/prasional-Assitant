@@ -6,7 +6,10 @@ from core.interfaces.tts import TTSProvider
 class MacTTS(TTSProvider):
 
     def speak(self, text: str) -> None:
+        text = str(text or "").strip()
+        if not text:
+            return
         subprocess.run(
-            ["say", "-v", "Tara", text],
+            ["say", text],
             check=True
         )

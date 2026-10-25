@@ -1,6 +1,7 @@
 """Parse common browser navigation and web-search voice commands."""
 
 import re
+import difflib
 from urllib.parse import quote_plus
 
 
@@ -53,6 +54,7 @@ class BrowserTaskParser:
         "command prompt", "cmd", "terminal", "task manager", "settings",
         "control panel", "word", "microsoft word", "excel", "microsoft excel",
         "powerpoint", "visual studio code", "vs code", "vscode", "pycharm",
+        "text edit", "textedit", "text editor", "whatsapp",
     }
 
     OPEN_PREFIXES = (
@@ -137,6 +139,17 @@ class BrowserTaskParser:
                 flags=re.IGNORECASE,
             ).strip()
             target_lower = target.lower().strip()
+
+            # Repair a close speech-to-text spelling of a known browser/site/app.
+            known_targets = set(self.BROWSERS) | set(self.WEBSITE_ALIASES) | self.DESKTOP_APPS
+            near_match = difflib.get_close_matches(
+                target_lower,
+                known_targets,
+                n=1,
+                cutoff=0.84,
+            )
+            if near_match:
+                target_lower = near_match[0]
 
             if not target_lower:
                 return self._result("unknown", browser)
