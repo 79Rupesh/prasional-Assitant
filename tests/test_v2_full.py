@@ -255,51 +255,59 @@ def test_close_app():
 # RUN
 # ============================================================
 
-print()
-print("=" * 60)
-print("              ELA V2 AUTOMATED TEST")
-print("=" * 60)
-print()
+def run_all_tests():
+    global PASS, FAIL, SKIP
 
-test("App alias resolution", test_aliases)
+    print()
+    print("=" * 60)
+    print("              ELA V2 AUTOMATED TEST")
+    print("=" * 60)
+    print()
 
-test("Classifier - apps", test_classifier_apps)
-test("Classifier - keyboard", test_classifier_keyboard)
-test("Classifier - mouse", test_classifier_mouse)
-test("Classifier - screen", test_classifier_screen)
-test("Classifier - browser", test_classifier_browser)
+    test("App alias resolution", test_aliases)
 
-test("Computer - open Calculator", test_app_open)
-test("Computer - open Text Edit", test_app_alias_open)
+    test("Classifier - apps", test_classifier_apps)
+    test("Classifier - keyboard", test_classifier_keyboard)
+    test("Classifier - mouse", test_classifier_mouse)
+    test("Classifier - screen", test_classifier_screen)
+    test("Classifier - browser", test_classifier_browser)
 
-test("Keyboard - type", test_keyboard_type)
-test("Keyboard - enter", test_keyboard_enter)
-test("Keyboard - hotkey", test_keyboard_hotkey)
+    test("Computer - open Calculator", test_app_open)
+    test("Computer - open Text Edit", test_app_alias_open)
 
-test("Mouse - move", test_mouse_move)
-test("Mouse - click", test_mouse_click)
-test("Mouse - double click", test_mouse_double_click)
-test("Mouse - scroll", test_mouse_scroll)
+    test("Keyboard - type", test_keyboard_type)
+    test("Keyboard - enter", test_keyboard_enter)
+    test("Keyboard - hotkey", test_keyboard_hotkey)
 
-test("Screen - screenshot", test_screenshot)
-test("Screen - OCR", test_ocr)
+    test("Mouse - move", test_mouse_move)
+    test("Mouse - click", test_mouse_click)
+    test("Mouse - double click", test_mouse_double_click)
+    test("Mouse - scroll", test_mouse_scroll)
 
-test("Browser - detection", test_browser_detection)
-test("Browser - address bar", test_browser_address_bar)
-test("Browser - navigation methods", test_browser_navigation_methods)
+    test("Screen - screenshot", test_screenshot)
+    test("Screen - OCR", test_ocr)
 
-test("App - close TextEdit", test_close_app)
+    test("Browser - detection", test_browser_detection)
+    test("Browser - address bar", test_browser_address_bar)
+    test("Browser - navigation methods", test_browser_navigation_methods)
 
-print()
-print("=" * 60)
-print("                    SUMMARY")
-print("=" * 60)
-print(f"PASS : {PASS}")
-print(f"FAIL : {FAIL}")
-print(f"SKIP : {SKIP}")
-print("=" * 60)
+    test("App - close TextEdit", test_close_app)
 
-if FAIL:
-    raise SystemExit(1)
+    print()
+    print("=" * 60)
+    print("                    SUMMARY")
+    print("=" * 60)
+    print(f"PASS : {PASS}")
+    print(f"FAIL : {FAIL}")
+    print(f"SKIP : {SKIP}")
+    print("=" * 60)
 
-print("ELA V2 AUTOMATED TESTS PASSED")
+    if FAIL:
+        return 1
+
+    print("ELA V2 AUTOMATED TESTS PASSED")
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(run_all_tests())

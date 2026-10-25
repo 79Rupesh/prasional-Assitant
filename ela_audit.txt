@@ -1,0 +1,530 @@
+==== PROJECT STRUCTURE ====
+Folder PATH listing
+Volume serial number is C612-4997
+C:.
+|   .gitignore
+|   a
+|   apply_ela_patch.py
+|   ela_audit.txt
+|   mic_test.wav
+|   notepad test_browser_parser.py
+|   project_structure.txt
+|   README.md
+|   requirements-windows.txt
+|   str
+|   test_browser_parser.py
+|   WINDOWS_SETUP.md
+|   
++---.ela_backup
+|   +---actions
+|   |   +---browser
+|   |   |       windows_browser.py
+|   |   |       
+|   |   +---search
+|   |   |       web_search.py
+|   |   |       
+|   |   \---youtube
+|   |           windows_youtube.py
+|   |           
+|   +---audio
+|   |   +---microphone
+|   |   |       real_microphone.py
+|   |   |       
+|   |   \---stt
+|   |           whisper_stt.py
+|   |           
+|   \---brain
+|       \---task
+|               browser_task_parser.py
+|               local_classifier.py
+|               
++---actions
+|   |   dispatcher.py
+|   |   task_dispatcher.py
+|   |   __init__.py
+|   |   
+|   +---browser
+|   |   |   browser_resolver.py
+|   |   |   mac_browser.py
+|   |   |   windows_browser.py
+|   |   |   
+|   |   \---__pycache__
+|   |           browser_resolver.cpython-314.pyc
+|   |           mac_browser.cpython-314.pyc
+|   |           windows_browser.cpython-314.pyc
+|   |           
+|   +---computer
+|   |   |   computer_controller.py
+|   |   |   keyboard_action.py
+|   |   |   mac_app_controller.py
+|   |   |   mac_app_discovery.py
+|   |   |   mouse_action.py
+|   |   |   open_app.py
+|   |   |   windows_app_controller.py
+|   |   |   windows_app_discovery.py
+|   |   |   __init__.py
+|   |   |   
+|   |   \---__pycache__
+|   |           computer_controller.cpython-314.pyc
+|   |           keyboard_action.cpython-314.pyc
+|   |           mac_app_controller.cpython-314.pyc
+|   |           mac_app_discovery.cpython-314.pyc
+|   |           mouse_action.cpython-314.pyc
+|   |           open_app.cpython-314.pyc
+|   |           windows_app_controller.cpython-314.pyc
+|   |           windows_app_discovery.cpython-314.pyc
+|   |           __init__.cpython-314.pyc
+|   |           
+|   +---file_system
+|   |   |   mac_file_system.py
+|   |   |   mac_file_target_resolver.py
+|   |   |   windows_file_system.py
+|   |   |   windows_file_target_resolver.py
+|   |   |   __init__.py
+|   |   |   
+|   |   \---__pycache__
+|   |           mac_file_system.cpython-314.pyc
+|   |           mac_file_target_resolver.cpython-314.pyc
+|   |           windows_file_system.cpython-314.pyc
+|   |           windows_file_target_resolver.cpython-314.pyc
+|   |           __init__.cpython-314.pyc
+|   |           
+|   +---phone
+|   |   |   __init__.py
+|   |   |   
+|   |   \---__pycache__
+|   |           __init__.cpython-314.pyc
+|   |           
+|   +---search
+|   |   |   web_search.py
+|   |   |   __init__.py
+|   |   |   
+|   |   \---__pycache__
+|   |           web_search.cpython-314.pyc
+|   |           __init__.cpython-314.pyc
+|   |           
+|   +---youtube
+|   |   |   mac_youtube.py
+|   |   |   windows_youtube.py
+|   |   |   
+|   |   \---__pycache__
+|   |           mac_youtube.cpython-314.pyc
+|   |           windows_youtube.cpython-314.pyc
+|   |           
+|   \---__pycache__
+|           dispatcher.cpython-314.pyc
+|           task_dispatcher.cpython-314.pyc
+|           __init__.cpython-314.pyc
+|           
++---app
+|   |   main.py
+|   |   voice_assistant.py
+|   |   __init__.py
+|   |   
+|   \---__pycache__
+|           main.cpython-314.pyc
+|           voice_assistant.cpython-314.pyc
+|           __init__.cpython-314.pyc
+|           
++---audio
+|   |   __init__.py
+|   |   
+|   +---microphone
+|   |   |   base.py
+|   |   |   real_microphone.py
+|   |   |   __init__.py
+|   |   |   
+|   |   \---__pycache__
+|   |           base.cpython-314.pyc
+|   |           real_microphone.cpython-314.pyc
+|   |           __init__.cpython-314.pyc
+|   |           
+|   +---stt
+|   |   |   whisper_stt.py
+|   |   |   __init__.py
+|   |   |   
+|   |   \---__pycache__
+|   |           whisper_stt.cpython-314.pyc
+|   |           __init__.cpython-314.pyc
+|   |           
+|   +---tts
+|   |   |   mac_tts.py
+|   |   |   windows_tts.py
+|   |   |   __init__.py
+|   |   |   
+|   |   \---__pycache__
+|   |           mac_tts.cpython-314.pyc
+|   |           windows_tts.cpython-314.pyc
+|   |           __init__.cpython-314.pyc
+|   |           
+|   \---__pycache__
+|           __init__.cpython-314.pyc
+|           
++---auth
+|   |   authenticator.py
+|   |   __init__.py
+|   |   
+|   \---__pycache__
+|           authenticator.cpython-314.pyc
+|           __init__.cpython-314.pyc
+|           
++---brain
+|   |   brain_coordinator.py
+|   |   brain_coordinator.py.bak
+|   |   __init__.py
+|   |   
+|   +---context
+|   |   |   __init__.py
+|   |   |   
+|   |   \---__pycache__
+|   |           __init__.cpython-314.pyc
+|   |           
+|   +---conversation
+|   |   |   context.py
+|   |   |   
+|   |   +---engine
+|   |   |   |   local_engine.py
+|   |   |   |   __init__.py
+|   |   |   |   
+|   |   |   \---__pycache__
+|   |   |           local_engine.cpython-314.pyc
+|   |   |           __init__.cpython-314.pyc
+|   |   |           
+|   |   +---intent
+|   |   |   |   detector.py
+|   |   |   |   
+|   |   |   \---__pycache__
+|   |   |           detector.cpython-314.pyc
+|   |   |           
+|   |   +---language
+|   |   |   |   detector.py
+|   |   |   |   __init__.py
+|   |   |   |   
+|   |   |   \---__pycache__
+|   |   |           detector.cpython-314.pyc
+|   |   |           __init__.cpython-314.pyc
+|   |   |           
+|   |   +---response
+|   |   |   |   response_engine.py
+|   |   |   |   __init__.py
+|   |   |   |   
+|   |   |   \---__pycache__
+|   |   |           response_engine.cpython-314.pyc
+|   |   |           __init__.cpython-314.pyc
+|   |   |           
+|   |   \---__pycache__
+|   |           context.cpython-314.pyc
+|   |           
+|   +---knowledge
+|   |   |   knowledge_loader.py
+|   |   |   knowledge_loader.py.bak
+|   |   |   __init__.py
+|   |   |   
+|   |   \---__pycache__
+|   |           knowledge_loader.cpython-314.pyc
+|   |           __init__.cpython-314.pyc
+|   |           
+|   +---llm
+|   |   |   gemini_llm.py
+|   |   |   llm_escalation.py
+|   |   |   llm_escalation.py.bak
+|   |   |   llm_factory.py
+|   |   |   openai_llm.py
+|   |   |   __init__.py
+|   |   |   
+|   |   \---__pycache__
+|   |           gemini_llm.cpython-314.pyc
+|   |           llm_escalation.cpython-314.pyc
+|   |           llm_factory.cpython-314.pyc
+|   |           openai_llm.cpython-314.pyc
+|   |           __init__.cpython-314.pyc
+|   |           
+|   +---task
+|   |   |   app_alias_resolver.py
+|   |   |   app_task_parser.py
+|   |   |   browser_task_parser.py
+|   |   |   file_selection_context.py
+|   |   |   file_selection_parser.py
+|   |   |   file_task_parser.py
+|   |   |   local_classifier.py
+|   |   |   youtube_task_parser.py
+|   |   |   youtube_video_resolver.py
+|   |   |   __init__.py
+|   |   |   
+|   |   \---__pycache__
+|   |           app_alias_resolver.cpython-314.pyc
+|   |           app_task_parser.cpython-314.pyc
+|   |           browser_task_parser.cpython-314.pyc
+|   |           file_selection_context.cpython-314.pyc
+|   |           file_selection_parser.cpython-314.pyc
+|   |           file_task_parser.cpython-314.pyc
+|   |           local_classifier.cpython-314.pyc
+|   |           youtube_task_parser.cpython-314.pyc
+|   |           youtube_video_resolver.cpython-314.pyc
+|   |           __init__.cpython-314.pyc
+|   |           
+|   \---__pycache__
+|           brain_coordinator.cpython-314.pyc
+|           __init__.cpython-314.pyc
+|           
++---core
+|   |   task_state.py
+|   |   __init__.py
+|   |   
+|   +---config
+|   |   |   settings.py
+|   |   |   __init__.py
+|   |   |   
+|   |   \---__pycache__
+|   |           settings.cpython-314.pyc
+|   |           __init__.cpython-314.pyc
+|   |           
+|   +---events
+|   |   |   event.py
+|   |   |   event_bus.py
+|   |   |   __init__.py
+|   |   |   
+|   |   \---__pycache__
+|   |           event.cpython-314.pyc
+|   |           event_bus.cpython-314.pyc
+|   |           __init__.cpython-314.pyc
+|   |           
+|   +---interfaces
+|   |   |   action.py
+|   |   |   app_alias_resolver.py
+|   |   |   app_controller.py
+|   |   |   app_discovery.py
+|   |   |   conversation_context.py
+|   |   |   conversation_intent.py
+|   |   |   dispatcher.py
+|   |   |   file_selection_context.py
+|   |   |   file_system.py
+|   |   |   file_target_resolver.py
+|   |   |   language_detector.py
+|   |   |   llm.py
+|   |   |   llm_escalation.py
+|   |   |   response_engine.py
+|   |   |   response_result.py
+|   |   |   router.py
+|   |   |   stt.py
+|   |   |   task_classifier.py
+|   |   |   task_dispatcher.py
+|   |   |   tts.py
+|   |   |   __init__.py
+|   |   |   
+|   |   +---browser
+|   |   |   |   browser_controller.py
+|   |   |   |   
+|   |   |   \---__pycache__
+|   |   |           browser_controller.cpython-314.pyc
+|   |   |           
+|   |   \---__pycache__
+|   |           action.cpython-314.pyc
+|   |           app_alias_resolver.cpython-314.pyc
+|   |           app_controller.cpython-314.pyc
+|   |           app_discovery.cpython-314.pyc
+|   |           conversation_context.cpython-314.pyc
+|   |           conversation_intent.cpython-314.pyc
+|   |           dispatcher.cpython-314.pyc
+|   |           file_selection_context.cpython-314.pyc
+|   |           file_system.cpython-314.pyc
+|   |           file_target_resolver.cpython-314.pyc
+|   |           language_detector.cpython-314.pyc
+|   |           llm.cpython-314.pyc
+|   |           llm_escalation.cpython-314.pyc
+|   |           response_engine.cpython-314.pyc
+|   |           response_result.cpython-314.pyc
+|   |           router.cpython-314.pyc
+|   |           stt.cpython-314.pyc
+|   |           task_classifier.cpython-314.pyc
+|   |           task_dispatcher.cpython-314.pyc
+|   |           tts.cpython-314.pyc
+|   |           __init__.cpython-314.pyc
+|   |           
+|   +---security
+|   |   |   confirmation_manager.py
+|   |   |   permission.py
+|   |   |   permission_manager.py
+|   |   |   security_policy.py
+|   |   |   __init__.py
+|   |   |   
+|   |   \---__pycache__
+|   |           confirmation_manager.cpython-314.pyc
+|   |           permission.cpython-314.pyc
+|   |           permission_manager.cpython-314.pyc
+|   |           security_policy.cpython-314.pyc
+|   |           __init__.cpython-314.pyc
+|   |           
+|   \---__pycache__
+|           task_state.cpython-314.pyc
+|           __init__.cpython-314.pyc
+|           
++---data
+|       ela_knowledge.txt
+|       
++---input
+|   |   keyboard_controller.py
+|   |   keyboard_provider.py
+|   |   mac_keyboard.py
+|   |   mac_mouse.py
+|   |   mouse_controller.py
+|   |   mouse_provider.py
+|   |   windows_keyboard.py
+|   |   windows_mouse.py
+|   |   __init__.py
+|   |   
+|   \---__pycache__
+|           keyboard_controller.cpython-314.pyc
+|           keyboard_provider.cpython-314.pyc
+|           mouse_controller.cpython-314.pyc
+|           mouse_provider.cpython-314.pyc
+|           windows_keyboard.cpython-314.pyc
+|           windows_mouse.cpython-314.pyc
+|           __init__.cpython-314.pyc
+|           
++---patch_files
+|   +---actions
+|   |   +---search
+|   |   |       web_search.py
+|   |   |       
+|   |   \---youtube
+|   |           windows_youtube.py
+|   |           
+|   +---audio
+|   |   +---microphone
+|   |   |       real_microphone.py
+|   |   |       
+|   |   \---stt
+|   |           whisper_stt.py
+|   |           
+|   \---brain
+|       \---task
+|               browser_task_parser.py
+|               local_classifier.py
+|               
++---router
+|   |   __init__.py
+|   |   
+|   \---intent_router
+|           basic_router.py
+|           __init__.py
+|           
++---screen
+|   |   mac_screen.py
+|   |   screen_analyzer.py
+|   |   screen_analyzer.py.backup
+|   |   screen_analyzer_provider.py
+|   |   screen_controller.py
+|   |   screen_provider.py
+|   |   vision_ocr
+|   |   vision_ocr.swift
+|   |   windows_screen.py
+|   |   __init__.py
+|   |   
+|   \---__pycache__
+|           screen_analyzer.cpython-314.pyc
+|           screen_analyzer_provider.cpython-314.pyc
+|           screen_controller.cpython-314.pyc
+|           screen_provider.cpython-314.pyc
+|           windows_screen.cpython-314.pyc
+|           __init__.cpython-314.pyc
+|           
+\---tests
+    |   fake_microphone.py
+    |   test_app_alias_resolver.py
+    |   test_app_controller_interface.py
+    |   test_app_control_flow.py
+    |   test_app_discovery.py
+    |   test_app_task_parser.py
+    |   test_brain_app_flow.py
+    |   test_brain_coordinator.py
+    |   test_browser_launch.py
+    |   test_computer_controller.py
+    |   test_conversation_context.py
+    |   test_dispatcher.py
+    |   test_event_bus.py
+    |   test_explicit_task_routing.py
+    |   test_file_selection_context.py
+    |   test_file_selection_flow.py
+    |   test_file_selection_parser.py
+    |   test_file_system_interface.py
+    |   test_file_target_resolver.py
+    |   test_file_task_parser.py
+    |   test_gemini.py
+    |   test_keyboard.py
+    |   test_language_detector.py
+    |   test_llm.py
+    |   test_llm_escalation.py
+    |   test_local_engine.py
+    |   test_mac_app_controller.py
+    |   test_mac_file_system.py
+    |   test_mac_screen.py
+    |   test_natural_app_flow.py
+    |   test_open_app.py
+    |   test_permissions.py
+    |   test_real_microphone.py
+    |   test_response_engine.py
+    |   test_router.py
+    |   test_screen_analyzer.py
+    |   test_search.py
+    |   test_settings.py
+    |   test_task_classifier.py
+    |   test_task_dispatcher.py
+    |   test_task_state.py
+    |   test_tts.py
+    |   test_v2_full.py
+    |   test_voice_safety.py
+    |   test_whisper.py
+    |   __init__.py
+    |   
+    \---__pycache__
+            fake_microphone.cpython-314.pyc
+            test_app_alias_resolver.cpython-314.pyc
+            test_app_controller_interface.cpython-314.pyc
+            test_app_control_flow.cpython-314.pyc
+            test_app_discovery.cpython-314.pyc
+            test_app_task_parser.cpython-314.pyc
+            test_brain_app_flow.cpython-314.pyc
+            test_brain_coordinator.cpython-314.pyc
+            test_browser_launch.cpython-314.pyc
+            test_computer_controller.cpython-314.pyc
+            test_conversation_context.cpython-314.pyc
+            test_dispatcher.cpython-314.pyc
+            test_event_bus.cpython-314.pyc
+            test_explicit_task_routing.cpython-314.pyc
+            test_file_selection_context.cpython-314.pyc
+            test_file_selection_flow.cpython-314.pyc
+            test_file_selection_parser.cpython-314.pyc
+            test_file_system_interface.cpython-314.pyc
+            test_file_target_resolver.cpython-314.pyc
+            test_file_task_parser.cpython-314.pyc
+            test_gemini.cpython-314.pyc
+            test_keyboard.cpython-314.pyc
+            test_language_detector.cpython-314.pyc
+            test_llm.cpython-314.pyc
+            test_llm_escalation.cpython-314.pyc
+            test_local_engine.cpython-314.pyc
+            test_mac_app_controller.cpython-314.pyc
+            test_mac_file_system.cpython-314.pyc
+            test_mac_screen.cpython-314.pyc
+            test_natural_app_flow.cpython-314.pyc
+            test_open_app.cpython-314.pyc
+            test_permissions.cpython-314.pyc
+            test_real_microphone.cpython-314.pyc
+            test_response_engine.cpython-314.pyc
+            test_router.cpython-314.pyc
+            test_screen_analyzer.cpython-314.pyc
+            test_search.cpython-314.pyc
+            test_settings.cpython-314.pyc
+            test_task_classifier.cpython-314.pyc
+            test_task_dispatcher.cpython-314.pyc
+            test_task_state.cpython-314.pyc
+            test_tts.cpython-314.pyc
+            test_v2_full.cpython-314.pyc
+            test_voice_safety.cpython-314.pyc
+            test_whisper.cpython-314.pyc
+            __init__.cpython-314.pyc
+            
+==== PYTHON SYNTAX CHECK ====
+==== DEPENDENCY CHECK ====
+No broken requirements found.
