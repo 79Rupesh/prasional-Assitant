@@ -1,105 +1,34 @@
 # Ela
 
-Ela is a Windows and macOS desktop voice assistant. The current application uses a
-microphone recorder, Whisper speech recognition, a text wake-word gate, local
-task classification, action handlers, local conversation responses, and an
-optional LLM provider. Conversation and task context are held in memory for
-the current process only.
+## Windows quick start
 
-## Run
+The project dependencies are installed in the local `venv` folder. To start Ela from PowerShell:
 
-From the project folder, use the matching environment:
-
-```bat
-.venv\Scripts\python.exe -m app.main
+```powershell
+.\venv\Scripts\python.exe main.py
 ```
 
-On macOS, see [MACOS_SETUP.md](MACOS_SETUP.md) and run:
+To reinstall the declared dependencies later:
 
-```bash
-.venv/bin/python -m app.main
+```powershell
+.\venv\Scripts\python.exe -m pip install -r requirements.txt
+.\venv\Scripts\python.exe -m playwright install chromium firefox
 ```
 
-Optional incoming phone control setup is documented in
-[PHONE_CONTROL_SETUP.md](PHONE_CONTROL_SETUP.md). It requires a Twilio voice
-number, an HTTPS tunnel, an allow-listed caller, a separate phone PIN, and
-spoken approval for each task.
+Ela needs a Gemini API key in `config/api_keys.json`. Keep that file private and do not share it. Screen analysis is available when you ask Ela to inspect your screen; it uses the installed `mss` package. Browser automation uses the installed Playwright browsers.
 
-Configure `ELA_PIN` and the API key for the selected LLM provider in the local
-`.env` file. Do not commit or include `.env` in a shared ZIP.
+The optional `pandas`, `pydub`, and `mediapipe` packages are not part of the base install. When wake-word mode is enabled, the app downloads the local `sherpa-onnx` keyword spotter and its model on first launch; audio conversion with `pydub` also needs FFmpeg. Wake-word listening can be turned off in Ela settings.
 
-`LLM_PROVIDER` defaults to `gemini` and requires `GEMINI_API_KEY`; optionally
-select the model with `GEMINI_MODEL`. For OpenAI, set `LLM_PROVIDER=openai`,
-`OPENAI_API_KEY` (or legacy `LLM_API_KEY`), and optionally `OPENAI_MODEL`
-(default `gpt-4o-mini`). For OpenRouter, set `LLM_PROVIDER=openrouter`,
-`OPENROUTER_API_KEY`, and optionally `OPENROUTER_MODEL` (default is the
-configured free model). Provider quota/rate-limit failures are logged with
-exception details and returned as a retry/quota message instead of crashing.
-Greetings, common conversational replies, the current date/time, and basic
-capability questions are answered locally; the LLM is reserved for requests
-that need more reasoning or knowledge.
+## Background assistant
 
-The optional `ELA_WAKE_TIMEOUT_SECONDS` setting controls how long follow-up
-speech is accepted after the wake word. It defaults to 45 seconds and must be
-between 5 and 300 seconds.
+After setup, Ela registers itself to start with your Windows user account. It listens locally for **“Ela”** or **“Hey Ela”**; the floating icon and Gemini session stay off while it sleeps. After the wake phrase, audio is buffered locally while Gemini connects so the same spoken request can be handled. Ela returns to local wake-word listening after her answer finishes, and also sleeps after two minutes if no request follows. The first run sets up the local wake-word package and model; an internet connection is needed for that one-time download.
 
-## Microphone troubleshooting
+Use the tray menu to open controls, wake or sleep Ela manually, or exit. The dashboard and audio device meters pause while the main window is hidden.
 
-Ela calibrates microphone noise automatically before each recording. To list
-the available input devices without recording audio, run:
+## Phone dashboard
 
-```bat
-.venv\Scripts\python.exe -m audio.microphone.diagnostics
-```
+Open ELA from the system tray, then open the settings drawer and choose **Connect phone · show QR**. You can also right-click the floating icon while ELA is awake. The phone and computer must be on the same Wi-Fi network, with Ela running on the computer. The phone page supports text and live voice. The first phone connection may ask you to accept Ela's local HTTPS certificate. A phone can wake Ela by sending a deliberate remote command.
 
-Set `ELA_MIC_DEVICE` to the selected device number only if the system default
-is wrong. For a very quiet microphone, set `ELA_MIC_SENSITIVITY=1.5` in `.env`
-to lower the speech threshold. Captured audio stays in memory by default. To
-opt in to temporary microphone debugging, set `ELA_SAVE_MIC_DIAGNOSTIC=true`;
-Ela then writes a WAV file in the operating system's temporary folder.
-(allowed range: 0.5–3; higher means more sensitive).
-The recorder requires repeated speech-level blocks to start and discards
-short transients. Whisper additionally rejects low-level/noise-only audio and
-trims silence. Set `ELA_WHISPER_LANGUAGE=auto`, `en`, or `hi` to choose automatic
-language detection or pin English/Hindi; in auto mode, unsupported language
-guesses are retried using both supported languages.
+Windows keeps the lock screen under its own sign-in security. Ela can lock the laptop, but it cannot collect or replay your Windows password to unlock it; unlock with Windows Hello or the normal Windows sign-in screen.
 
-## Current voice and browser behavior
-
-- Audio is recorded as 16 kHz, mono, 16-bit PCM, gated against calibrated room
-  noise, and split on detected silence.
-- Whisper output is quality-gated; only English and Hindi language results are
-  accepted. Clear Hindi/Hinglish recognition is not guaranteed.
-- Standby recognizes “Ela” and clear open/navigation commands addressed with a
-  final “AI”. This uses recognized text rather than a dedicated audio wake-word
-  detector, so it cannot guarantee immunity to Whisper hallucinations.
-- Browser handlers request navigation in Chrome. YouTube falls back to the
-  system default browser if Chrome is not installed. Ela cannot verify that a
-  page finished loading, so it reports the launch request without claiming the
-  page load was verified.
-- Opening apps and websites, browser controls, searches, and ordinary desktop
-  commands run from one instruction. Delete, move, and rename operations ask
-  for approval after Ela resolves the exact file; WhatsApp asks once after the
-  recipient and attachment are verified. Safe ordered commands run directly.
-- File copy works between existing folders. WhatsApp document sending checks
-  the selected contact and attachment on screen, then asks again before Send.
-  Windows needs the Tesseract OCR application installed for this screen check.
-
-Run the safe, focused tests and syntax check with:
-
-```bat
-venv\Scripts\python.exe -m pytest tests/test_voice_safety.py tests/test_speech_quality.py tests/test_microphone_thresholds.py tests/test_llm_resilience.py
-venv\Scripts\python.exe -m unittest tests.test_task_state tests.test_browser_launch tests.test_explicit_task_routing tests.test_settings
-venv\Scripts\python.exe -m compileall -q app actions audio brain core tests
-```
-
-The microphone, Whisper model, physical wake word, and real Chrome navigation
-must still be validated on the target Windows machine.
-
-## Roadmap
-
-1. Complete and validate the V2 core: robust wake detection, reliable speech,
-   browser state verification, cancellation, confirmation, and task recovery.
-2. Add authorized desktop, window, keyboard/mouse, and document workflows.
-3. Consider web research, multitasking, messaging, and remote-control features
-   only after the core is stable.
+Ela's default voice is Kore, and the default HUD uses the reactor core without a face.
