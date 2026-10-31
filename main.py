@@ -55,7 +55,7 @@ from google.genai import types
 from ui import ElaUI
 from memory.memory_manager import (
     load_memory, update_memory, format_memory_for_prompt,
-    save_session_summary, pop_last_session,
+    save_session_summary,
     search_memory, set_trim_notifier,
 )
 
@@ -71,7 +71,6 @@ from actions.proactive         import ProactiveEngine
 from actions.background_monitor import (
     add_monitor, remove_monitor, list_monitors, check_all as monitor_check_all,
 )
-from actions.web_search        import _news as _fetch_news_sync
 from memory.config_manager     import (
     get_brief_enabled, get_media_resolution, get_proactive_audio_enabled,
     get_push_to_talk_enabled, get_thinking_enabled, get_turn_tuning, get_voice,
@@ -626,26 +625,23 @@ class ElaLive:
         # switching microphone — started an empty session. "Unlimited sessions"
         # leaked through exactly this hole.
         #
-        # Deliberately in RAM only, never written to disk. Persisting it would
-        # make a fresh launch continue yesterday's conversation, which sounds
-        # appealing but breaks the session-summary flow: _save_session_summary
-        # runs at shutdown and the morning briefing pops it the next day. A
-        # conversation that never ends never produces a summary, and the
-        # "yesterday we talked about…" line silently disappears.
+        # Deliberately in RAM only, never written to disk. A fresh launch starts
+        # a clean conversation; saved summaries stay in memory storage and are
+        # not appended to the fixed startup greeting.
         self._resume_handle: str | None = None
         self._turn_done_event: asyncio.Event | None = None
-        # Wake-word mode serves one spoken request for each explicit wake.
-        # Playback completion is tracked separately so sleeping does not cut
-        # the final audio off when the server has already completed generation.
-        self._playback_done_event: asyncio.Event | None = None
-        self._sleep_after_reply = False
-        self._assistant_audio_seen = False
         self._dashboard     = None
-        self._briefing_sent    = False          # morning briefing fires once per process
+        self._startup_greeting_sent = False
         self._sys_monitor      = SystemMonitor()  # persistent cooldown state
         self._proactive        = ProactiveEngine()
         self._last_user_speech = time.monotonic()  # updated on every user utterance
         self._session_log: list[str] = []          # conversation turns for end-of-session summary
+        self._turn_tool_results: dict[str, tuple[dict, object | None]] = {}
+        self._tool_results_lock = threading.Lock()
+        self._secure_desktop_checked_at = 0.0
+        self._secure_desktop_active = False
+        self._secure_desktop_forced_until = 0.0
+        self._secure_desktop_lock = threading.Lock()
 
         self._enhanced_live = True  # proactive audio; auto-disabled if the server rejects it
         self._tuned_live    = True  # turn-taking / media / thinking knobs; same fallback
@@ -711,6 +707,67 @@ class ElaLive:
         ready = bool(self._wake_detector and self._wake_detector.ready) or wake_is_ready()
         return {"enabled": self._wake_enabled, "awake": self._awake, "ready": ready}
 
+    def _input_blocked_by_secure_desktop(self) -> bool:
+        """Do not capture speech while Windows shows its secure desktop."""
+        if _platform.system() != "Windows":
+            return False
+
+        now = time.monotonic()
+        with self._secure_desktop_lock:
+            if now < self._secure_desktop_forced_until:
+                return True
+            if now - self._secure_desktop_checked_at < 0.25:
+                return self._secure_desktop_active
+            self._secure_desktop_checked_at = now
+            was_blocked = self._secure_desktop_active
+
+            try:
+                import ctypes
+                from ctypes import wintypes
+
+                user32 = ctypes.WinDLL("user32", use_last_error=True)
+                user32.OpenInputDesktop.argtypes = (
+                    wintypes.DWORD, wintypes.BOOL, wintypes.DWORD,
+                )
+                user32.OpenInputDesktop.restype = wintypes.HANDLE
+                user32.GetUserObjectInformationW.argtypes = (
+                    wintypes.HANDLE, wintypes.INT, wintypes.LPVOID,
+                    wintypes.DWORD, wintypes.LPDWORD,
+                )
+                user32.GetUserObjectInformationW.restype = wintypes.BOOL
+                user32.CloseDesktop.argtypes = (wintypes.HANDLE,)
+                user32.CloseDesktop.restype = wintypes.BOOL
+
+                desktop = user32.OpenInputDesktop(0, False, 0x0001)  # READOBJECTS
+                if not desktop:
+                    # Fail closed: if Windows will not reveal which desktop is
+                    # active, keep potentially sensitive sign-in speech local.
+                    self._secure_desktop_active = True
+                    return True
+
+                try:
+                    required = wintypes.DWORD()
+                    user32.GetUserObjectInformationW(
+                        desktop, 2, None, 0, ctypes.byref(required),
+                    )  # UOI_NAME; zero-size call obtains the buffer length.
+                    if not required.value:
+                        raise OSError(ctypes.get_last_error(), "Could not read desktop name")
+                    chars = required.value // ctypes.sizeof(wintypes.WCHAR) + 1
+                    name = ctypes.create_unicode_buffer(chars)
+                    if not user32.GetUserObjectInformationW(
+                        desktop, 2, name, required.value, ctypes.byref(required),
+                    ):
+                        raise OSError(ctypes.get_last_error(), "Could not read desktop name")
+                    self._secure_desktop_active = name.value.casefold() != "default"
+                finally:
+                    user32.CloseDesktop(desktop)
+            except Exception as exc:
+                if not was_blocked:
+                    print(f"[ELA] Secure desktop check failed; pausing mic: {exc}")
+                self._secure_desktop_active = True
+
+            return self._secure_desktop_active
+
     def _ensure_wake_detector(self) -> bool:
         """Load the detector once (model loads on first start). Idempotent."""
         if self._wake_detector is None:
@@ -768,6 +825,8 @@ class ElaLive:
         self._clear_wake_audio()
 
         def callback(indata, frames, time_info, status):
+            if self._input_blocked_by_secure_desktop():
+                return
             if self._wake_capture_event.is_set():
                 try:
                     self._wake_audio_queue.put_nowait(indata.tobytes())
@@ -817,10 +876,9 @@ class ElaLive:
                 self.ui.write_log(f"ERR: Wake-word microphone unavailable: {e}")
                 await asyncio.sleep(5)
 
-        # The model is only needed to hear the wake phrase. Release it while
-        # the full assistant session is running to reduce its active RAM use.
-        if detector is not None:
-            detector.stop()
+        # Keep the small local model warm while the Live session is connected.
+        # It is idle until sleep mode feeds it again; restarting it after every
+        # timeout made the next wake wait for a full model load.
 
     def _on_wake_detected(self) -> None:
         """Switch to the active session on the asyncio/UI-owning thread."""
@@ -834,11 +892,9 @@ class ElaLive:
     def wake(self, reason: str = "wake word") -> None:
         if self._awake:
             return
+        with self._tool_results_lock:
+            self._turn_tool_results.clear()
         self._awake = True
-        self._sleep_after_reply = False
-        self._assistant_audio_seen = False
-        if self._playback_done_event:
-            self._playback_done_event.clear()
         self._last_user_speech = time.monotonic()   # start the auto-sleep clock now
         self.ui.set_state("MUTED" if self.ui.muted else "LISTENING")
         self.ui.write_log(f"SYS: Awake — {reason}.")
@@ -857,18 +913,10 @@ class ElaLive:
             self.request_reconnect(keep_context=False, reason="idle sleep")
 
     async def _run_sleep_watch(self) -> None:
-        """Sleep as soon as a one-shot wake-word reply has finished playing."""
+        """Stay available through conversation; sleep after two minutes of silence."""
         while True:
             await asyncio.sleep(0.2)
             if not self._wake_enabled or not self._awake:
-                continue
-            playback_done = self._playback_done_event
-            if self._sleep_after_reply and playback_done and playback_done.is_set():
-                # Let the final speaker buffer drain before reconnecting the
-                # Live session and closing its audio stream.
-                await asyncio.sleep(max(0.35, self._out_latency + 0.15))
-                if self._wake_enabled and self._awake:
-                    self.sleep(reason="answer complete")
                 continue
             with self._speaking_lock:
                 speaking = self._is_speaking
@@ -893,6 +941,8 @@ class ElaLive:
         else:
             self._wake_enabled = False
             save_wake_word_enabled(False)
+            if self._wake_detector is not None:
+                self._wake_detector.stop()
             self.wake(reason="wake word disabled")
             return "disabled"
 
@@ -1008,6 +1058,8 @@ class ElaLive:
         if self._wake_enabled and not self._awake:
             self.ui.write_log("SYS: I'm asleep — say 'Ela' or 'Hey Ela', or tap WAKE NOW first.")
             return
+        with self._tool_results_lock:
+            self._turn_tool_results.clear()
         asyncio.run_coroutine_threadsafe(
             self.session.send_client_content(
                 turns={"role": "user", "parts": [{"text": text}]},
@@ -1085,10 +1137,6 @@ class ElaLive:
     def interrupt(self) -> None:
         """Stop ELA mid-speech: drain queued audio and open mic immediately."""
         self._interrupted = True
-        self._sleep_after_reply = False
-        self._assistant_audio_seen = False
-        if self._playback_done_event:
-            self._playback_done_event.clear()
         q = self.audio_in_queue
         if q:
             drained = 0
@@ -1170,7 +1218,8 @@ class ElaLive:
         security_ctx = (
             "[DEVICE SIGN-IN SECURITY]\n"
             "Never ask the user for a Windows, macOS, or phone password, PIN, "
-            "recovery code, or biometric secret. Never store or transmit one. "
+            "recovery code, or biometric secret. Never listen for, type, store, "
+            "or transmit one. "
             "You may lock the computer when asked, but you cannot unlock its "
             "secure sign-in screen. If asked to unlock it, direct the user to "
             "Windows Hello or the device's normal sign-in screen.\n\n"
@@ -1295,6 +1344,35 @@ class ElaLive:
         return out
 
     async def _execute_tool(self, fc) -> types.FunctionResponse:
+        """Run each identical tool action at most once per user request.
+
+        Live can occasionally replay a function call while completing a turn.
+        Returning the first result for an exact duplicate prevents repeated
+        clicks, launches, or setting changes without blocking a later request.
+        """
+        name = fc.name
+        args = dict(fc.args or {})
+        key = name + ":" + json.dumps(args, sort_keys=True, ensure_ascii=False, default=str)
+        with self._tool_results_lock:
+            cached = self._turn_tool_results.get(key)
+        if cached is not None:
+            response, scheduling = cached
+            kwargs = {"scheduling": scheduling} if scheduling else {}
+            print(f"[ELA] ↩ Skipped duplicate tool call: {name}")
+            return types.FunctionResponse(
+                id=fc.id, name=name, response=response, **kwargs
+            )
+
+        result = await self._execute_tool_once(fc)
+        response = getattr(result, "response", None)
+        if isinstance(response, dict):
+            scheduling = getattr(result, "scheduling", None)
+            with self._tool_results_lock:
+                self._turn_tool_results[key] = (response, scheduling)
+        self._last_user_speech = time.monotonic()
+        return result
+
+    async def _execute_tool_once(self, fc) -> types.FunctionResponse:
         name = fc.name
         args = dict(fc.args or {})
 
@@ -1418,6 +1496,13 @@ class ElaLive:
                         "response": None, "session_memory": None}
                 r = await loop.run_in_executor(None, lambda: self._action_registry.run(name, args, _ctx))
                 result = r or "Done."
+                if name == "computer_settings" and "lock_screen" in str(result).lower():
+                    # Force the next mic callback to re-check Windows' input
+                    # desktop immediately after LockWorkStation is requested.
+                    with self._secure_desktop_lock:
+                        self._secure_desktop_checked_at = 0.0
+                        self._secure_desktop_active = True
+                        self._secure_desktop_forced_until = time.monotonic() + 1.5
                 # web_search: mirror results to the on-screen content panel
                 if (name == "web_search" and r
                         and not r.startswith("No results")
@@ -1490,6 +1575,11 @@ class ElaLive:
         loop = asyncio.get_event_loop()
 
         def callback(indata, frames, time_info, status):
+            # Never forward speech from Windows' secure sign-in/UAC desktop.
+            # In particular, a spoken password must stay between the user and
+            # the operating system.
+            if self._input_blocked_by_secure_desktop():
+                return
             # ── Wake-word gate ───────────────────────────────────────────────
             # While asleep, the mic audio NEVER goes to Gemini (nothing is
             # streamed, so ELA can't respond to speech not addressed to it and
@@ -1501,10 +1591,6 @@ class ElaLive:
                 det = self._wake_detector
                 if det is not None:
                     det.feed(indata)
-                return
-            # Once a wake-word reply is complete, ignore room speech while its
-            # final speaker buffer drains and the sleep transition is pending.
-            if self._wake_enabled and self._sleep_after_reply:
                 return
             with self._speaking_lock:
                 ela_speaking = self._is_speaking
@@ -1675,10 +1761,6 @@ class ElaLive:
 
                     if response.data:
                         print(f"[ELA] 🔊 Audio received: {len(response.data)} bytes")
-                        if self._wake_enabled and self._awake and not self._interrupted:
-                            self._assistant_audio_seen = True
-                            if self._playback_done_event:
-                                self._playback_done_event.clear()
                         if self._interrupted:
                             pass  # discard: interrupted
                         else:
@@ -1725,19 +1807,16 @@ class ElaLive:
                             # flag and skip all further processing for that turn.
                             if self._interrupted:
                                 self._interrupted = False
-                                self._assistant_audio_seen = False
                                 in_buf  = []
                                 out_buf = []
                                 self._visemes.reset()
                                 continue
 
-                            if (self._wake_enabled and self._awake
-                                    and self._assistant_audio_seen):
-                                self._sleep_after_reply = True
-
                             full_in = " ".join(in_buf).strip()
                             if full_in:
                                 self._last_out_logged = ""   # new exchange
+                                with self._tool_results_lock:
+                                    self._turn_tool_results.clear()
                                 self.ui.write_log(f"You: {full_in}")
                                 self._session_log.append(f"User: {full_in}")
                                 if self._dashboard:
@@ -1766,18 +1845,6 @@ class ElaLive:
                                         "ts": datetime.now().isoformat(),
                                     }))
                             out_buf = []
-
-                            # A wake phrase authorizes one request. After the
-                            # reply finishes playing, return to local wake-word
-                            # listening before ordinary room talk becomes a new
-                            # request.
-                            if (
-                                self._wake_enabled
-                                and self._awake
-                                and self._assistant_audio_seen
-                                and not response.tool_call
-                            ):
-                                self._sleep_after_reply = True
 
                             if self._vision_close_pending:
                                 # This turn_complete IS the vision answer — close camera + release busy flag
@@ -1862,8 +1929,6 @@ class ElaLive:
                     ):
                         self.set_speaking(False)
                         self._turn_done_event.clear()
-                        if self._sleep_after_reply and self._playback_done_event:
-                            self._playback_done_event.set()
                     continue
 
                 self.set_speaking(True)
@@ -1940,141 +2005,23 @@ class ElaLive:
             stream.stop()
             stream.close()
 
-    # ── Morning briefing ────────────────────────────────────────────────────────
+    # ── Startup greeting ─────────────────────────────────────────────────────────
 
-    async def _send_startup_briefing(self) -> None:
-        """
-        Two-phase briefing optimized for speed:
-          Phase 1 — instant greeting (no tools) → speech starts in <1s
-          Phase 2 — news pre-fetched in a background thread while Phase 1 plays,
-                    delivered as ready text (no Gemini tool-call round-trip) and
-                    shown on the UI content panel. Waits for turn_complete event
-                    instead of a fixed sleep so there is no unnecessary gap.
-        """
-        memory   = load_memory()
-        identity = memory.get("identity", {})
-
-        def _val(k: str) -> str:
-            e = identity.get(k, {})
-            return (e.get("value", "") if isinstance(e, dict) else str(e)).strip()
-
-        lang = _val("language")
-        name = _val("name")
-        time_str = datetime.now().strftime("%H:%M")
-
-        # Start fetching news immediately — runs in parallel while phase 1 plays
-        loop = asyncio.get_event_loop()
-        news_future = loop.run_in_executor(None, _fetch_news_sync, "top world news today")
-
+    async def _send_startup_greeting(self) -> None:
+        """Say the user's requested greeting without adding news or context."""
         await asyncio.sleep(0.3)
         if not self.session:
             return
-
-        # ── Phase 1: instant greeting ─────────────────────────────────────────
-        # The briefing fires before the user has said anything, so the
-        # remembered language is the only signal there is. It is a starting
-        # point, not a setting: the moment they reply, their language wins.
-        lang_clause = (f" Speak this greeting in {lang}, then follow the "
-                       f"user's own language from their first reply onward."
-                       if lang else "")
-        name_clause = f" Address the user as {name}." if name else ""
-
-        # Inject last session context if available — pop removes it so it's never repeated
-        last = await asyncio.to_thread(pop_last_session)
-        session_clause = ""
-        if last:
-            try:
-                _delta = (datetime.now() - datetime.strptime(last["date"], "%Y-%m-%d")).days
-                _when  = "earlier today" if _delta == 0 else ("yesterday" if _delta == 1 else f"{_delta} days ago")
-            except Exception:
-                _when = "last time"
-            session_clause = (
-                f" Also briefly and naturally mention that {_when}: {last['summary']}"
-            )
-
-        p1 = (
-            f"Greet the user warmly, mention it is {time_str}, and say you are fetching today's news now.{session_clause} "
-            f"Keep it to 2 short sentences max. Do not call any tools.{lang_clause}{name_clause}"
-        )
-
-        # Clear the turn-done event so we can wait for Phase 1 to finish
         if self._turn_done_event:
             self._turn_done_event.clear()
-
         await self.session.send_client_content(
-            turns={"role": "user", "parts": [{"text": p1}]},
+            turns={
+                "role": "user",
+                "parts": [{"text": 'Say exactly: "Hi Rupesh sir." Say nothing else and call no tools.'}],
+            },
             turn_complete=True,
         )
-        print("[ELA] Briefing phase 1 (greeting) sent.")
-
-        # ── Phase 2: fire as soon as Phase 1 audio is done ───────────────────
-        async def _deliver_news():
-            try:
-                lang_str = (f" Speak in {lang} unless the user has since "
-                            f"spoken another language, in which case use theirs."
-                            if lang else "")
-
-                # Wait for news fetch (already running) and Phase 1 turn-complete
-                # in parallel — whichever takes longer determines the wait time
-                news_done   = asyncio.wrap_future(news_future)
-                turn_waited = False
-                if self._turn_done_event:
-                    try:
-                        await asyncio.wait_for(self._turn_done_event.wait(), timeout=6.0)
-                        turn_waited = True
-                    except asyncio.TimeoutError:
-                        pass
-
-                # Extra buffer: turn_complete fires when Gemini finishes *generating*
-                # Phase 1, but audio may still be playing.  Waiting a beat here
-                # prevents Phase 2 audio from arriving while Phase 1 is mid-sentence
-                # (which sounds like a "repeated first response" to the user).
-                if turn_waited:
-                    await asyncio.sleep(0.8)
-                else:
-                    await asyncio.sleep(1.0)
-
-                try:
-                    news_text = await asyncio.wait_for(news_done, timeout=8.0)
-                except Exception as e:
-                    self.ui.write_log(f"SYS: News fetch timed out/failed: {e!r}")
-                    news_text = ""
-
-                if not self.session:
-                    return
-
-                failed = (not news_text) or news_text.startswith(
-                    ("No news found", "Search failed", "Please provide")
-                )
-                if not failed:
-                    # Show on UI content panel immediately
-                    self.ui.show_content("NEWS — top world news today", news_text)
-
-                    p2 = (
-                        f"[BRIEFING] Here are today's top news headlines:\n{news_text}\n\n"
-                        "Pick ONE headline, summarise it in one sentence, then say the full list "
-                        f"is displayed on screen. Do not call any tools.{lang_str}"
-                    )
-                else:
-                    self.ui.write_log(
-                        f"SYS: News unavailable — backend returned: {news_text[:120]!r}"
-                    )
-                    p2 = (
-                        "News headlines could not be fetched right now. "
-                        f"Let the user know briefly.{lang_str}"
-                    )
-
-                await self.session.send_client_content(
-                    turns={"role": "user", "parts": [{"text": p2}]},
-                    turn_complete=True,
-                )
-                print("[ELA] Briefing phase 2 (news) sent.")
-            except Exception as e:
-                print(f"[Briefing] Phase 2 error: {e}")
-                print(f"[ELA] Briefing phase 2 failed: {e}")
-                self.ui.write_log("SYS: Could not fetch the news for the briefing.")
-
-        asyncio.create_task(_deliver_news())
+        print("[ELA] Startup greeting sent.")
 
     # ── Session memory ──────────────────────────────────────────────────────────
 
@@ -2340,8 +2287,6 @@ class ElaLive:
                     self.audio_in_queue   = asyncio.Queue()
                     self.out_queue        = asyncio.Queue(maxsize=200)
                     self._turn_done_event = asyncio.Event()
-                    self._playback_done_event = asyncio.Event()
-                    self._playback_done_event = asyncio.Event()
 
                     # The local wake listener may have captured the first part
                     # of the user's command while this Live connection opened.
@@ -2400,13 +2345,12 @@ class ElaLive:
                     if self._dashboard:
                         tg.create_task(self._relay_phone_audio())
 
-                    # Morning briefing — fires once per process launch (if enabled).
-                    # Skipped in wake-word mode: it comes up asleep, and a briefing
-                    # would mean talking while "asleep".
-                    if (not self._briefing_sent and get_brief_enabled()
+                    # One fixed greeting per process launch when the startup
+                    # greeting setting is enabled. Wake-word mode remains asleep.
+                    if (not self._startup_greeting_sent and get_brief_enabled()
                             and self._awake and not self._wake_enabled):
-                        self._briefing_sent = True
-                        tg.create_task(self._send_startup_briefing())
+                        self._startup_greeting_sent = True
+                        tg.create_task(self._send_startup_greeting())
 
             except KeyboardInterrupt:
                 raise

@@ -3311,6 +3311,7 @@ class MainWindow(QMainWindow):
                     self._toggle_autostart()
                 else:
                     save_autostart_initialized()
+            self._repair_windows_autostart()
 
         sc_mute = QShortcut(QKeySequence("F4"), self)
         sc_mute.activated.connect(self._toggle_mute)
@@ -3650,7 +3651,11 @@ class MainWindow(QMainWindow):
             # ── Windows ───────────────────────────────────────────────────────
             if _os == "Windows":
                 pythonw  = python.parent / "pythonw.exe"
-                target   = str(pythonw if pythonw.exists() else python)
+                if not pythonw.exists():
+                    raise FileNotFoundError(
+                        "pythonw.exe is required to create a shortcut without a console."
+                    )
+                target   = str(pythonw)
                 lnk      = str(desktop / "J.A.R.V.I.S.lnk")
                 icon_loc = str(ico_path) if ico_path.exists() else f"{target},0"
                 self._create_lnk_windows(lnk, target, str(script),
@@ -4802,6 +4807,35 @@ class MainWindow(QMainWindow):
         except Exception:
             return False
 
+    def _repair_windows_autostart(self) -> None:
+        """Keep ELA's existing Run entry on pythonw so login opens no console."""
+        if _OS != "Windows" or not self._check_autostart():
+            return
+        pythonw = Path(sys.executable).with_name("pythonw.exe")
+        if not pythonw.exists():
+            return
+        run_path = r"Software\Microsoft\Windows\CurrentVersion\Run"
+        script = Path(__file__).resolve().parent / "main.py"
+        expected = f'"{pythonw}" "{script}"'
+        key = None
+        try:
+            import winreg
+            key = winreg.OpenKey(winreg.HKEY_CURRENT_USER, run_path, 0,
+                                 winreg.KEY_QUERY_VALUE | winreg.KEY_SET_VALUE)
+            current, _kind = winreg.QueryValueEx(key, "ELA_AI")
+            if str(current).strip() != expected:
+                winreg.SetValueEx(key, "ELA_AI", 0, winreg.REG_SZ, expected)
+                print("[ELA] Updated auto-start to launch without a command window.")
+        except Exception as e:
+            print(f"[ELA] Could not update hidden auto-start: {e}")
+        finally:
+            if key is not None:
+                try:
+                    import winreg
+                    winreg.CloseKey(key)
+                except Exception:
+                    pass
+
     def _toggle_autostart(self):
         currently_on = self._check_autostart()
         try:
@@ -4814,7 +4848,11 @@ class MainWindow(QMainWindow):
                     winreg.DeleteValue(reg, "ELA_AI")
                 else:
                     pythonw = Path(sys.executable).parent / "pythonw.exe"
-                    exe = str(pythonw if pythonw.exists() else sys.executable)
+                    if not pythonw.exists():
+                        raise FileNotFoundError(
+                            "pythonw.exe is required for a hidden Windows auto-start."
+                        )
+                    exe = str(pythonw)
                     winreg.SetValueEx(reg, "ELA_AI", 0, winreg.REG_SZ,
                                       f'"{exe}" "{script}"')
                 winreg.CloseKey(reg)
@@ -5111,7 +5149,7 @@ class MainWindow(QMainWindow):
         if not hasattr(self, '_brief_btn'):
             return
         if enabled:
-            self._brief_btn.setText("☀  MORNING BRIEF: ON")
+            self._brief_btn.setText("☀  STARTUP GREETING: ON")
             self._brief_btn.setStyleSheet(f"""
                 QPushButton {{
                     background: #001a08; color: {C.GREEN};
@@ -5121,7 +5159,7 @@ class MainWindow(QMainWindow):
                 QPushButton:hover {{ background: #002010; }}
             """)
         else:
-            self._brief_btn.setText("☀  MORNING BRIEF: OFF")
+            self._brief_btn.setText("☀  STARTUP GREETING: OFF")
             self._brief_btn.setStyleSheet(f"""
                 QPushButton {{
                     background: transparent; color: {C.TEXT_DIM};
@@ -5466,6 +5504,7 @@ class MainWindow(QMainWindow):
                 self._toggle_autostart()
             else:
                 save_autostart_initialized()
+        self._repair_windows_autostart()
 
 
 class _RootShim:

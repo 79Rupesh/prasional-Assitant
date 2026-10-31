@@ -2,6 +2,7 @@ import time
 import subprocess
 import platform
 import shutil
+import webbrowser
 
 try:
     import psutil
@@ -248,6 +249,17 @@ def open_app(
     if not app_name:
         return "No application name provided."
 
+    # Instagram's Windows Store alias is inconsistent across machines. Opening
+    # its official site through the normal browser is predictable and keeps
+    # later profile requests in the same web workflow.
+    if app_name.casefold().strip() in {"instagram", "insta", "ig"}:
+        try:
+            if webbrowser.open("https://www.instagram.com/", new=0, autoraise=True):
+                return "Opened Instagram in your default browser."
+        except Exception as e:
+            print(f"[open_app] Instagram browser launch failed: {e}")
+        return "Could not open Instagram in your default browser."
+
     launcher = _OS_LAUNCHERS.get(_SYSTEM)
     if launcher is None:
         return f"Unsupported operating system: {_SYSTEM}"
@@ -276,7 +288,7 @@ def open_app(
 # ── Tool declaration (auto-discovered by core/action_loader.py) ──────────────
 TOOL = {
     "name": "open_app",
-    "description": "Opens any application on the computer. Use this whenever the user asks to open, launch, or start any app, website, or program. Always call this tool — never just say you opened it.",
+    "description": "Opens desktop applications. Instagram opens in the default browser. For websites, navigation, or a person's social profile, use browser_control so follow-up commands can continue in the same browser. Always call a tool to perform the action; never just say it was opened.",
     "parameters": {
         "type": "OBJECT",
         "properties": {

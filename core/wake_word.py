@@ -161,7 +161,10 @@ class WakeWordDetector:
         self._threshold = threshold
         self._logger = logger
         self._notify = notify or (lambda _msg: None)
-        self._queue: queue.Queue = queue.Queue(maxsize=50)
+        # Keep at most a short tail of audio. A multi-second backlog makes the
+        # spotter react to stale speech after a busy moment instead of the word
+        # the user just said.
+        self._queue: queue.Queue = queue.Queue(maxsize=8)
         self._thread: threading.Thread | None = None
         self._running = False
         self._model = None
@@ -232,7 +235,13 @@ class WakeWordDetector:
             data = frame_int16[:, 0].copy() if getattr(frame_int16, "ndim", 1) > 1 else frame_int16.copy()
             self._queue.put_nowait(data)
         except queue.Full:
-            pass
+            # The callback must never block. Discard the oldest frame and keep
+            # the newest one so inference stays responsive under load.
+            try:
+                self._queue.get_nowait()
+                self._queue.put_nowait(data)
+            except (queue.Empty, queue.Full):
+                pass
         except Exception:
             pass
 

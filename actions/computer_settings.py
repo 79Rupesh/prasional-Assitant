@@ -459,7 +459,9 @@ def take_screenshot():
 
 def lock_screen():
     if _OS == "Windows":
-        pyautogui.hotkey("win", "l")
+        import ctypes
+        if not ctypes.windll.user32.LockWorkStation():
+            raise OSError("Windows could not start the secure lock screen.")
     elif _OS == "Darwin":
         subprocess.run(["pmset", "displaysleepnow"], capture_output=True)
     else:
@@ -708,7 +710,12 @@ _ALIASES = {
     "close_window":    ("close this", "close it"),
     "full_screen":     ("fullscreen", "maximise screen"),
     "show_desktop":    ("minimise everything", "go to desktop"),
-    "lock_screen":     ("lock", "lock the pc", "lock computer"),
+    "lock_screen":     (
+        "lock", "lock the pc", "lock computer", "lock screen",
+        "window lock kar do", "windows lock kar do", "laptop lock kar do",
+        "pc lock kar do", "computer lock kar do", "screen lock kar do",
+        "lock kar do", "laptop ko lock karo", "computer ko lock karo",
+    ),
     "sleep_display":   ("screen off", "turn off the screen", "display off"),
     "dark_mode":       ("night mode", "light mode", "toggle theme"),
     "toggle_wifi":     ("wifi", "wi-fi", "internet off", "internet on"),
@@ -754,6 +761,8 @@ def _detect_action(description: str) -> dict:
 
     # 3. Alias phrases.
     for action, phrases in _ALIASES.items():
+        if action == "lock_screen" and re.search(r"\bunlock\b", low):
+            continue
         if any(_normalise(p) == norm or p in low for p in phrases):
             return {"action": action, "value": None}
 
@@ -787,9 +796,6 @@ def computer_settings(
     player=None,
     session_memory=None,
 ) -> str:
-    if not _PYAUTOGUI:
-        return "pyautogui is not installed. Run: pip install pyautogui"
-
     params      = parameters or {}
     raw_action  = params.get("action", "").strip()
     description = params.get("description", "").strip()
@@ -802,6 +808,9 @@ def computer_settings(
             value = detected.get("value")
 
     action = raw_action.lower().strip().replace(" ", "_").replace("-", "_")
+
+    if not _PYAUTOGUI and action != "lock_screen":
+        return "pyautogui is not installed. Run: pip install pyautogui"
 
     if not action:
         return _suggest(description or raw_action)
@@ -911,7 +920,7 @@ def computer_settings(
 # ── Tool declaration (auto-discovered by core/action_loader.py) ──────────────
 TOOL = {
     "name": "computer_settings",
-    "description": "Controls the computer: volume, brightness, window management, keyboard shortcuts, typing text on screen, closing apps, fullscreen, dark mode, WiFi, restart, shutdown, scrolling, tab management, zoom, screenshots, lock screen, refresh/reload page. Use for ANY single computer control command. restart, shutdown and toggle_wifi put a confirmation on the user's screen and do NOT happen until they press it — never claim they are done. Volume, brightness and dark mode can be reversed with the `undo` tool.",
+    "description": "Controls the computer: volume, brightness, windows, shortcuts, apps, WiFi, restart, shutdown, tabs, screenshots, and lock screen. Use `action=lock_screen` immediately for any request to lock Windows/the laptop, including 'window lock kar do' or 'laptop lock kar do'. Windows sign-in passwords are handled only by the secure Windows sign-in screen; never ask for or type one. Restart, shutdown and toggle_wifi require on-screen confirmation.",
     "parameters": {
         "type": "OBJECT",
         "properties": {
@@ -939,7 +948,7 @@ TOOL = {
                     "find_on_page | scroll_up | scroll_down | scroll_top | "
                     "scroll_bottom | page_up | page_down | copy | paste | cut | "
                     "undo | redo | select_all | save | enter | escape | press_key | "
-                    "type_text | screenshot | lock_screen | open_settings | "
+                    "type_text | screenshot | lock_screen (lock PC now) | open_settings | "
                     "file_explorer | open_run | dark_mode | toggle_wifi | "
                     "restart | shutdown"
                 )
